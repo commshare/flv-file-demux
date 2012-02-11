@@ -4,6 +4,7 @@
 #include "byte_parse.h"
 #include "amf_parse.h"
 #include "flv_demux.h"
+#include "../mp_msg.h"
 
 BOOL amf_parse_elem_name    (FLVDemuxInf* dmx);
 BOOL amf_parse_number       (FLVDemuxInf* dmx);
@@ -11,7 +12,15 @@ BOOL amf_parse_boolean      (FLVDemuxInf* dmx);
 BOOL amf_parse_string       (FLVDemuxInf* dmx);
 BOOL amf_parse_long_string  (FLVDemuxInf* dmx);
 BOOL amf_parse_object       (FLVDemuxInf* dmx)
-{}
+{
+    UI16 elem_name_length;
+    UI8* elem_name;
+
+    if (dmx->m_CurrentPacket == NULL)
+    {
+        return FALSE;
+    }
+}
 BOOL amf_parse_ecma_array   (FLVDemuxInf* dmx);
 BOOL amf_parse_strict_array (FLVDemuxInf* dmx);
 
