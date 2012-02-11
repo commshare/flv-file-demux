@@ -11,120 +11,63 @@
 #include "../demux.h"
 
 
-#define AUDIO_STREAM_ID 8
-#define VIDEO_STREAM_ID 9
-#define OTHER_STREAM_ID 0
-
 #define FLV_FILE_HEADER_SIZE 13U
 #define FLV_TAGS_HEADER_SIZE 11U
 #define FLV_TAGS_TAILER_SIZE  4U
 
-/** AAC format identifiers. */
-#define STBAACDETECT_SYNC_ADTS_1    0xFF
-#define STBAACDETECT_SYNC_ADTS_2    0xF0
-#define STBAACDETECT_START_ADIF_1   0x41
-#define STBAACDETECT_START_ADIF_2   0x44
-#define STBAACDETECT_START_ADIF_3   0x49
-#define STBAACDETECT_START_ADIF_4   0x46
-
+/// @brief FLV tag packet
 typedef struct FLVTagPacket
 {
-    FLVTagType  m_TagType;
-    UI32        m_TagDataSize;
-    UI32        m_TagTimestamp;
-    UI32        m_TagBufferLen;
-    UI8*        m_TagData;
+    FLVTagType          m_TagType;          ///< Tag type
+    UI64                m_TagPosition;      ///< Tag start position
+    UI64                m_TagDataSize;      ///< Tag data size
+    UI32                m_TagTimestamp;     ///< Tag timestamp
+    UI32                m_TagBufferLen;     ///< Tag buffer length
+    UI8*                m_TagData;          ///< Tag data
 }FLVTagPacket;
+/// @brief FLV Timestamp index info
 typedef struct FLVTSInfo
 {
-    UI64        m_Pos;
-    UI32        m_TimeDelta;
+    UI64                m_FilePos;          ///< Key frame file position
+    UI32                m_TimePos;          ///< Key frame time position
 }FLVTSInfo;
+/// @brief FLV Timestam indexes
 typedef struct TimestampInd
 {
-    FLVTSInfo*  m_Index;
-    UI32        m_Count;
+    FLVTSInfo*          m_Index;            ///< Index List
+    UI32                m_Count;            ///< Index Count
 }TimestampInd;
-typedef struct FLVDemuxInf
+/// @brief Pre-read tags list node
+typedef struct PrereadTags
 {
-    UI64         m_CurrentPosition;
-    FLVTagPacket m_CurrentPacket;
-    TimestampInd m_TimestampIndex;
-}FLVDemuxInf;
+    FLVTagPacket*       m_Packet;
+    struct PrereadTags* m_Next;
+}PrereadTags;
+/// @brief FLV demux info
+typedef struct FLVDemuxer
+{
+    UI64                m_CurrentPosition;  ///< Current Demux Position
+    FLVTagPacket        m_CurrentPacket;    ///< Current Tag Packet
+    PrereadTags         m_PrereadTagList;   ///< Pre-read tag list
+    TimestampInd        m_TimestampIndex;   ///< Timestamp Index
+}FLVDemuxer;
 
 
-
-BOOL flv_demux_get_packet (FLVDemuxInf* dmx);
-
-typedef enum
-{
-    FLV_DEMUX_NONE   = 0,
-    FLV_DEMUX_HEADER = 1,
-    FLV_DEMUX_MDATA  = 2,
-    FLV_DEMUX_AUDIO  = 3,
-    FLV_DEMUX_VIDEO  = 4
-}FLVDemuxState;
-typedef struct 
-{
-    long long ts;   ///< second
-    long long pos;
-}FLVIndex;
-typedef struct 
-{
-    unsigned long count;
-    FLVIndex*     elems;
-}FLVIndexList;
-typedef struct
-{
-    unsigned char* data;
-    int            size;
-    int            buflength;
-}Input;
-typedef struct PrereadTagNode
-{
-    AVPacket* pack;
-    long long pos;
-    struct PrereadTagNode* next;
-}PrereadTagNode;
-typedef struct  
-{
-    URLProtocol*  m_URLProtocol;
-    Input         m_InputInfor;
-    AVPacket*     m_AVPacket;
-    Metadata*     m_Metadata;
-    FLVIndexList  m_IndexList;
-
-    long long     m_FileSize;
-    long long     m_AVDataOffset;
-    int           m_Duration;
-    long long     m_CurrPos;
-    long          m_TagDataSize;
-    long          m_TagTimestamp;
-    FLVDemuxState m_DemuxState;
-
-    PrereadTagNode*   m_PrereadList;
-}FLVDemuxInfo;
-typedef struct
-{
-    unsigned char* data;
-    long  numBit;
-    long  size;
-    long  currentBit;
-    long  numByte;
-}stbDemux_BitBuffer_t;
-
-
-int can_handle (int fileformat);
-int flv_demux_open (DemuxContext* ctx, URLProtocol* h);
-int flv_demux_probe (DemuxContext* ctx);
-int flv_demux_close (DemuxContext* ctx);
-int flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta);
-int flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt);
+/// @brief  Open FLV demux
+int       flv_demux_open (DemuxContext* ctx, URLProtocol* h);
+/// @brief  Probe FLV file
+int       flv_demux_probe (DemuxContext* ctx);
+/// @brief  Close FLV demux
+int       flv_demux_close (DemuxContext* ctx);
+/// @brief  Parse metadata
+int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta);
+/// @brief  Read a audio or video packet
+int       flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt);
+/// @brief  Seek according to assigned timestamp
 long long flv_demux_seek (DemuxContext* ctx, long long ts);
-/*
- * meta - fill the field can get, others should be set to zero
- *
- * return 0 on success; -1 on error; >0 input data was not enough, the length required(from file begin)
- */
-int flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta);
+/// @brief  Meta - fill the field can get, others should be set to zero
+/// @return return 0 on success; -1 on error; >0 input data was not enough, the length all required
+int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta);
+
+
 #endif/*_FLV_DEMUX_H_*/

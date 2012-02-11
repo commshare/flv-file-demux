@@ -22,9 +22,10 @@ typedef unsigned long long  UI64;
 /// @brief Check if local machine is little endian
 BOOL is_little_endian ();
 /// @brief Get an unsigned integer from buf
-BOOL get_UI16 (UI8** buf, int* size, UI16* data);
-BOOL get_UI24 (UI8** buf, int* size, UI32* data);
-BOOL get_UI32 (UI8** buf, int* size, UI32* data);
-BOOL get_UI64 (UI8** buf, int* size, UI64* data);
+BOOL get_Byte (UI8** buf, UI32 *size, UI8 * data);
+BOOL get_UI16 (UI8** buf, UI32 *size, UI16* data);
+BOOL get_UI24 (UI8** buf, UI32 *size, UI32* data);
+BOOL get_UI32 (UI8** buf, UI32 *size, UI32* data);
+BOOL get_UI64 (UI8** buf, UI32* size, UI64* data);
 
 #endif // BYTEOPERATION_H

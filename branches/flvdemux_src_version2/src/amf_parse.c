@@ -6,23 +6,268 @@
 #include "flv_demux.h"
 #include "../mp_msg.h"
 
-BOOL amf_parse_elem_name    (FLVDemuxInf* dmx);
-BOOL amf_parse_number       (FLVDemuxInf* dmx);
-BOOL amf_parse_boolean      (FLVDemuxInf* dmx);
-BOOL amf_parse_string       (FLVDemuxInf* dmx);
-BOOL amf_parse_long_string  (FLVDemuxInf* dmx);
-BOOL amf_parse_object       (FLVDemuxInf* dmx)
-{
-    UI16 elem_name_length;
-    UI8* elem_name;
+//NUMBER_MARKER       = 0x00,
+//BOOLEAN_MARKER      = 0x01, ///< This program will skip this AMF data
+//STRING_MARKER       = 0x02, ///< This program will skip this AMF data
+//OBJECT_MARKER       = 0x03,
+//MOVIECLIP_MARKER    = 0x04, ///< reserved, AMF_0 protocol does not supported
+//NULL_MARKER         = 0x05, ///< This program will skip this AMF data
+//UNDEFINED_MARKER    = 0x06, ///< This program will skip this AMF data
+//REFERENCE_MARKER    = 0X07, ///< This program does not supported this AMF data type
+//ECMA_ARRAY_MARKER   = 0x08,
+//OBJECT_END_MARKER   = 0x09, ///< This program will skip this AMF data
+//STRICT_ARRAY_MARKER = 0x0A,
+//DATA_MARKER         = 0x0B, ///< This program will skip this AMF data
+//LONG_STRING_MARKER  = 0x0C, ///< This program will skip this AMF data
+//UNSUPPORTED_MARKER  = 0x0D, ///< This program does not supported this AMF data type
+//RECORDSET_MARKER    = 0x0E, ///< reserved, AMF_0 protocol does not supported
+//XML_DOCUMENT_MARKER = 0x0F, ///< This program does not supported this AMF data type
+//TYPED_OBJECT_MARKER = 0x10  ///< This program does not supported this AMF data type
 
-    if (dmx->m_CurrentPacket == NULL)
+
+BOOL amf_parse_elem_name    (UI8** buf, UI32 *size, UI8** data, UI16* lens)
+{
+    UI16 _len = 0U; ///< current *data space length
+
+    if (*lens == NULL)
+    {
+        return FALSE;
+    }
+
+    _len = lens;
+
+    if (get_UI16(buf, size, lens) == FALSE)
+    {
+        return FALSE;
+    }
+
+    if (*size < *lens)
+    {
+        return FALSE;
+    }
+    if (_len < *lens)
+    {
+        if (*data != NULL)
+        {
+            free(*data);
+            *data = NULL;
+        }
+        *data = (UI8*)malloc(*lens + 1);
+        if (*data == NULL)
+        {
+            return FALSE;
+        }
+    }
+    memcpy(*data, *buf, *lens);
+    *data[*lens] = NULL;
+
+    return TRUE;
+}
+BOOL amf_parse_skip_bytes   (UI8** buf, UI32 *size, UI8   type)
+{
+    switch (type)
+    {
+    case BOOLEAN_MARKER     :
+    {
+        if (*size < 1)
+        {
+            return FALSE;
+        }
+        *buf  += 1;
+        *size += 1;
+        return TRUE;
+    }
+    case STRING_MARKER      :
+    {
+        UI16 lens = 0U;
+        if (get_UI16 (buf, size, &lens) == FALSE)
+        {
+            return FALSE;
+        }
+        if (*size < lens)
+        {
+            return FALSE;
+        }
+        *buf  += lens;
+        *size += lens;
+        return TRUE;
+    }
+    case REFERENCE_MARKER   :
+    {
+        if (get_UI16(buf, size, NULL) == FALSE)
+        {
+            return FALSE;
+        }
+        return TRUE;
+    }
+    case OBJECT_END_MARKER  :
+    {
+        if (*size < 3)
+        {
+            return FALSE;
+        }
+        *buf  += 3;
+        *size -= 3;
+    }
+    case DATA_MARKER        :
+    {
+        if ((get_UI16 (buf, size, NULL) == FALSE)\
+            || (get_UI64(buf, size, NULL) == FALSE))
+        {
+            return FALSE;
+        }
+        return TRUE;
+    }
+    case LONG_STRING_MARKER :
+    {
+        UI32 lens = 0U;
+        if (get_UI32 (buf, size, &lens) == FALSE)
+        {
+            return FALSE;
+        }
+        if (*size < lens)
+        {
+            return FALSE;
+        }
+        *buf  += lens;
+        *size += lens;
+        return TRUE;
+    }
+    default:
+        return FALSE;
+    }
+}
+BOOL amf_parse_number       (UI8** buf, UI32 *size, UI64* data)
+{
+    double float_data;
+    if (get_UI64(buf, size, (UI64*)&float_data) == FALSE)
+    {
+        return FALSE;
+    }
+    if (data != NULL)
+    {
+        *data = (UI64)float_data;
+    }
+    return TRUE;
+}
+BOOL amf_parse_object       (UI8** buf, UI32 *size, Metadata* mdata, TimestampInd* index)
+{
+    UI16 elemlens   = 0UL;  ///< object element name length
+    UI8* elemname   = NULL; ///< object element name string
+
+    memset (mdata, 0, sizeof(Metadata));
+
+    while ((*size >= 3) && (*buf[0] != 0x00 || *buf[1] != 0x00 || *buf[2] != 0x09))
+    {
+        UI8 amf_tag_type;
+
+        if (amf_parse_elem_name(buf, size, &elemname, &elemlens))
+        {
+            return FALSE;
+        }
+        if (get_Byte (buf, size, &amf_tag_type))
+        {
+            return FALSE;
+        }
+
+        switch((AMFType)amf_tag_type)
+        {
+        case BOOLEAN_MARKER     :   ///< BOOLEAN_MARKER
+        {
+            if (*size < 1)
+            {
+                return FALSE;
+            }
+            *buf  += 1;
+            *size += 1;
+            return TRUE;
+        }
+        case STRING_MARKER      :   ///< STRING_MARKER
+        {
+            UI16 lens = 0U;
+            if (get_UI16 (buf, size, &lens) == FALSE)
+            {
+                return FALSE;
+            }
+            if (*size < lens)
+            {
+                return FALSE;
+            }
+            *buf  += lens;
+            *size += lens;
+            return TRUE;
+        }
+        case REFERENCE_MARKER   :   ///< REFERENCE_MARKER
+        {
+            if (get_UI16(buf, size, NULL) == FALSE)
+            {
+                return FALSE;
+            }
+            return TRUE;
+        }
+        case DATA_MARKER        :   ///< DATA_MARKER
+        {
+            if ((get_UI16 (buf, size, NULL) == FALSE)\
+                || (get_UI64(buf, size, NULL) == FALSE))
+            {
+                return FALSE;
+            }
+            return TRUE;
+        }
+        case LONG_STRING_MARKER :   ///< LONG_STRING_MARKER
+        {
+            UI32 lens = 0U;
+            if (get_UI32 (buf, size, &lens) == FALSE)
+            {
+                return FALSE;
+            }
+            if (*size < lens)
+            {
+                return FALSE;
+            }
+            *buf  += lens;
+            *size += lens;
+            return TRUE;
+        }
+        case OBJECT_MARKER      :   ///< OBJECT_MARKER
+        {
+            if (amf_parse_object(buf, size, mdata) == FALSE)
+            {
+                return FALSE;
+            }
+        }
+        case ECMA_ARRAY_MARKER  :   ///< ECMA_ARRAY_MARKER
+        {
+            if (amf_parse_ecma_array(buf, size, mdata) == FALSE)
+            {
+                return FALSE;
+            }
+        }
+        case STRICT_ARRAY_MARKER:   ///<
+        {
+            if (amf_parse_strict_array(buf, size, index) == FALSE)
+            {
+                return FALSE;
+            }
+        }
+        default:
+            return FALSE;
+        }
+    }
+
+    if ((*size >= 3) && (*buf[0] != 0x00 || *buf[1] != 0x00 || *buf[2] != 0x09))
+    {
+        *buf  += 3;
+        *size -= 3;
+        return TRUE;
+    }
+    else
     {
         return FALSE;
     }
 }
-BOOL amf_parse_ecma_array   (FLVDemuxInf* dmx);
-BOOL amf_parse_strict_array (FLVDemuxInf* dmx);
+BOOL amf_parse_ecma_array   (FLVDemuxer* dmx);
+BOOL amf_parse_strict_array (FLVDemuxer* dmx);
 
 
 int amf_parse_elem_name (unsigned char** data, int* size, char* name, unsigned short* lens)
@@ -38,8 +283,6 @@ int amf_parse_elem_name (unsigned char** data, int* size, char* name, unsigned s
     (*size) -= *lens;
     return 0;
 }
-
-/** 0x00 */
 double amf_parse_double (unsigned char** data, int* size)
 {
     double num = get_fl64(*data + 1, *size - 1);
@@ -48,7 +291,6 @@ double amf_parse_double (unsigned char** data, int* size)
     (*size) -= 9;
     return num;
 }
-/** 0x02 */
 int amf_parse_string (unsigned char** data, int* size)
 {
     unsigned short lens = get_ui16(*data + 1, *size - 1);
@@ -56,7 +298,6 @@ int amf_parse_string (unsigned char** data, int* size)
     (*size) -= (1 + 2 + lens);
     return 0;
 }
-/** 0x0C */
 int amf_parse_long_string (unsigned char** data, int* size)
 {
     unsigned long lens = get_ui32(*data + 1, *size - 1);
@@ -64,8 +305,6 @@ int amf_parse_long_string (unsigned char** data, int* size)
     (*size) -= (1 + 4 + lens);
     return 0;
 }
-
-/** 0x03 */
 int amf_parse_object (FLVDemuxInfo* dmx, unsigned char** data, int* size)
 {
     unsigned short namelens = 0;
@@ -199,7 +438,6 @@ int amf_parse_object (FLVDemuxInfo* dmx, unsigned char** data, int* size)
     (*size) -= 3;
     return 0;
 }
-/** 0x08 */
 int amf_parse_ecma_array (FLVDemuxInfo* dmx, unsigned char** data, int* size)
 {
     unsigned short namelens = 0;

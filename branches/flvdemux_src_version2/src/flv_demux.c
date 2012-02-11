@@ -7,16 +7,91 @@
 #include "flv_parse.h"
 #include "amf_parse.h"
 
-static DemuxContext * create_demux_context();
-static void destroy_demux_context(DemuxContext * ctx);
-static int  flv_demux_get_aac_sub_type (unsigned char* data);
-extern void flv_demux_force_close(void);
+/// @brief  Check if file of this type can handle
+static int           can_handle(int fileformat);
+/// @brief  Create demux context
+static DemuxContext* create_demux_context();
+/// @brief  Destroy demux context
+static void          destroy_demux_context(DemuxContext * ctx);
+
+extern void          flv_demux_force_close ();
+/// @brief  Get a tag packet and set it into dmx
+/// @return return #TRUE on success, #FALSE on error
+static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx);
+/// @brief  Get sub-type of AAC audio
+static BOOL          flv_demux_get_aac_sub_type (UI8* data);
+/// @brief  Add a pre-read tag packet
+static int           flv_demux_add_a_prepacket (FLVDemuxer* dmx, FLVTagPacket* tag);
+/// @brief  Get a pre-read packet
+static AVPacket*     flv_demux_check_prepacket_list (FLVDemuxer* dmx, long long pos);
+
+
+DemuxContextHelper   flv_demux_helper =
+{
+    "flv",
+    can_handle,
+    create_demux_context,
+    destroy_demux_context,
+    0,
+    0
+};
+static int           can_handle(int fileformat)
+{
+    if (fileformat == FILEFORMAT_ID_FLV)
+    {
+        mp_msg(0, MSGL_V, "can_handle : OK\n");
+        return 0;
+    }
+    mp_msg(0, MSGL_V, "can_handle :: Cannot handle\n");
+    return -1;
+}
+static DemuxContext* create_demux_context()
+{
+    DemuxContext * ctx = calloc(1, sizeof(DemuxContext));
+    ctx->demux_open = flv_demux_open;
+    ctx->demux_probe = flv_demux_probe;
+    ctx->demux_close = flv_demux_close;
+    ctx->demux_parse_metadata = flv_demux_parse_metadata;
+    ctx->demux_read_packet = flv_demux_read_packet;
+    ctx->demux_seek = flv_demux_seek;
+
+    //insert the instance to the global instance list
+    if(flv_demux_helper.priv_data == 0)
+    {
+        flv_demux_helper.priv_data = ctx;
+    }
+    else
+    {
+        ctx->next = flv_demux_helper.priv_data;
+        flv_demux_helper.priv_data = ctx;
+    }
+
+    return ctx;
+}
+static void          destroy_demux_context(DemuxContext * ctx)
+{
+    DemuxContext * cur = flv_demux_helper.priv_data;
+    DemuxContext * prev = cur;
+    while(cur && cur != ctx)
+    {
+        prev = cur;
+        cur = cur->next;
+    }
+    if(cur == ctx)
+    {
+        prev->next = cur->next;
+    }
+
+    /// @note destroy DemuxContext only, it's private data should be cleared in flv_demux_close
+    free(ctx);
+}
+
+
+
 static int  read_file_data (FLVDemuxInfo* dmx, long long pos, int size);
-static int  add_a_preread_packet (DemuxContext* ctx, AVPacket* pack, long long pos);
-static AVPacket* check_preread_tags (FLVDemuxInfo* dmx, long long pos);
 
 static int  need_force_close = 0;
-static int  flv_demux_get_aac_sub_type (unsigned char* data)
+static BOOL flv_demux_get_aac_sub_type(UI8 *data)
 {
     char  codec_tag   = 0;
     long  codec_data  = 0;
@@ -46,7 +121,7 @@ static int  flv_demux_get_aac_sub_type (unsigned char* data)
         return DACF_NONE;
     }
 }
-extern void flv_demux_force_close(void)
+extern void flv_demux_force_close()
 {
     need_force_close = 1;
 }
@@ -1146,67 +1221,3 @@ int flv_demux_parse_codec_from_raw_data(unsigned char data[], int size, Metadata
 
     return 0;
 }
-
-DemuxContextHelper flv_demux_helper = {
-    "flv",
-    can_handle,
-    create_demux_context,
-    destroy_demux_context,
-    0,
-    0
-};
-
-int can_handle(int fileformat)
-{
-    if (fileformat == FILEFORMAT_ID_FLV)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_can_handle : OK\n");
-        return 0;
-    }
-    mp_msg(0, MSGL_V, "flv_demux_can_handle : This format cannot handle\n");
-    return -1;
-}
-
-static DemuxContext * create_demux_context()
-{
-    DemuxContext * ctx = calloc(1, sizeof(DemuxContext));
-    ctx->demux_open = flv_demux_open;
-    ctx->demux_probe = flv_demux_probe;
-    ctx->demux_close = flv_demux_close;
-    ctx->demux_parse_metadata = flv_demux_parse_metadata;
-    ctx->demux_read_packet = flv_demux_read_packet;
-    ctx->demux_seek = flv_demux_seek;
-
-    //insert the instance to the global instance list
-    if(flv_demux_helper.priv_data == 0)
-    {
-        flv_demux_helper.priv_data = ctx;
-    }
-    else
-    {
-        ctx->next = flv_demux_helper.priv_data;
-        flv_demux_helper.priv_data = ctx;
-    }
-
-    return ctx;
-}
-
-static void destroy_demux_context(DemuxContext * ctx)
-{
-    //remove the instance from the global instance list
-    DemuxContext * cur = flv_demux_helper.priv_data;
-    DemuxContext * prev = cur;
-    while(cur && cur != ctx)
-    {
-        prev = cur;
-        cur = cur->next;
-    }
-    if(cur == ctx)
-    {
-        prev->next = cur->next;
-    }
-
-    //destroy DemuxContext only, it's private data should be cleared in flv_demux_close
-    free(ctx);
-}
-
