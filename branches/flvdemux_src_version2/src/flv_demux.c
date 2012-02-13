@@ -7,23 +7,24 @@
 #include "flv_parse.h"
 #include "amf_parse.h"
 
+/// @brief  Indicate if demux module need force close
+static int           need_force_close = 0;
 /// @brief  Check if file of this type can handle
 static int           can_handle(int fileformat);
 /// @brief  Create demux context
 static DemuxContext* create_demux_context();
 /// @brief  Destroy demux context
 static void          destroy_demux_context(DemuxContext * ctx);
-
+/// @brief  Set the force close flag
 extern void          flv_demux_force_close ();
 /// @brief  Get a tag packet and set it into dmx
-/// @return return #TRUE on success, #FALSE on error
 static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx);
 /// @brief  Get sub-type of AAC audio
-static BOOL          flv_demux_get_aac_sub_type (UI8* data);
+static BOOL          flv_demux_get_aac_sub_type (FLVDemuxer* dmx);
 /// @brief  Add a pre-read tag packet
-static int           flv_demux_add_a_prepacket (FLVDemuxer* dmx, FLVTagPacket* tag);
+static BOOL          flv_demux_add_a_prepacket (FLVDemuxer* dmx);
 /// @brief  Get a pre-read packet
-static AVPacket*     flv_demux_check_prepacket_list (FLVDemuxer* dmx, long long pos);
+static BOOL          flv_demux_check_prepacket_list (FLVDemuxer* dmx, UI64 pos, AVPacket* pkt);
 
 
 DemuxContextHelper   flv_demux_helper =
@@ -47,7 +48,7 @@ static int           can_handle(int fileformat)
 }
 static DemuxContext* create_demux_context()
 {
-    DemuxContext * ctx = calloc(1, sizeof(DemuxContext));
+    DemuxContext * ctx = (DemuxContext*)calloc(1, sizeof(DemuxContext));
     ctx->demux_open = flv_demux_open;
     ctx->demux_probe = flv_demux_probe;
     ctx->demux_close = flv_demux_close;
@@ -62,7 +63,7 @@ static DemuxContext* create_demux_context()
     }
     else
     {
-        ctx->next = flv_demux_helper.priv_data;
+        ctx->next = (DemuxContext*)flv_demux_helper.priv_data;
         flv_demux_helper.priv_data = ctx;
     }
 
@@ -70,7 +71,7 @@ static DemuxContext* create_demux_context()
 }
 static void          destroy_demux_context(DemuxContext * ctx)
 {
-    DemuxContext * cur = flv_demux_helper.priv_data;
+    DemuxContext * cur = (DemuxContext*)flv_demux_helper.priv_data;
     DemuxContext * prev = cur;
     while(cur && cur != ctx)
     {
@@ -79,741 +80,597 @@ static void          destroy_demux_context(DemuxContext * ctx)
     }
     if(cur == ctx)
     {
-        prev->next = cur->next;
+        if(cur == flv_demux_helper.priv_data)
+        {
+            //head will be free
+            flv_demux_helper.priv_data = cur->next;
+        }
+        else
+        {
+            prev->next = cur->next;
+        }
     }
 
     /// @note destroy DemuxContext only, it's private data should be cleared in flv_demux_close
     free(ctx);
 }
-
-
-
-static int  read_file_data (FLVDemuxInfo* dmx, long long pos, int size);
-
-static int  need_force_close = 0;
-static BOOL flv_demux_get_aac_sub_type(UI8 *data)
+extern void          flv_demux_force_close ()
 {
-    char  codec_tag   = 0;
-    long  codec_data  = 0;
-    unsigned char *outbufData = NULL;
-    unsigned char flags = data[0];
-    unsigned char aac_packet_type;
-
-    codec_tag = flags >> 4;
-    if (codec_tag == 0x0A)
+    if (need_force_close != 0)
     {
-        codec_data = 2;
-    }
-    else
-    {
-        return DACF_NONE;
-    }
-    outbufData= data + codec_data;
-
-    aac_packet_type = data[1];
-    switch(aac_packet_type)
-    {
-    case 0:
-        return DACF_ADIF;
-    case 1:
-        return DACF_NONE;
-    default:
-        return DACF_NONE;
+        need_force_close = 1;
     }
 }
-extern void flv_demux_force_close()
+static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx)
 {
-    need_force_close = 1;
-}
-static int  read_file_data (FLVDemuxInfo* dmx, long long pos, int size)
-{
-#ifdef _FLV_DEMUX_TEST_
-    FILE *fileptr;
-#endif
-    int rlen = 0;
-    if (size > dmx->m_InputInfor.buflength)
-    {
-        if (dmx->m_InputInfor.data != NULL)
-        {
-            free (dmx->m_InputInfor.data);
-        }
-        dmx->m_InputInfor.data = (unsigned char*)malloc(size);
-        if (dmx->m_InputInfor.data == NULL)
-        {
-            return -1;
-        }
-        dmx->m_InputInfor.buflength = size;
-    }
-    dmx->m_InputInfor.size = size;
-#   ifdef  _FLV_DEMUX_TEST_
-    fileptr = fopen("D:\\Private\\WorkArea\\FLVDemux\\flvdemux_src\\test.flv", "rb+");
-    fseek(fileptr, (long)pos, SEEK_SET);
-    rlen = fread(dmx->m_InputInfor.data + rlen, 1, size, fileptr);
-    fclose(fileptr);
-#   endif 
-
-#   ifndef _FLV_DEMUX_TEST_
-    rlen = dmx->m_URLProtocol->url_read(dmx->m_URLProtocol, dmx->m_InputInfor.data + rlen\
-        , size - rlen);
-#   endif
-
-    if (rlen == 0)
-    {
-        return 0;
-    }
-    if (rlen == size)
-    {
-        return rlen;
-    }
-    return -1;
-}
-static int  add_a_preread_packet (DemuxContext* ctx, AVPacket* pack, long long pos)
-{
-    FLVDemuxInfo* dmx = (FLVDemuxInfo*)ctx->priv_data;
-    PrereadTagNode* tmp = NULL;
-
-    if (dmx->m_PrereadList == NULL)
-    {
-        dmx->m_PrereadList = (PrereadTagNode*)malloc(sizeof(PrereadTagNode));
-        if (dmx->m_PrereadList == NULL)
-        {
-            mp_msg(0, MSGL_V, "Allocate Preread Node Failed\n");
-            return -1;
-        }
-        mp_msg(0, MSGL_V, "Allocate Preread List Header = %p And All Members are set as NULL\n"\
-            , dmx->m_PrereadList);
-        dmx->m_PrereadList->next = NULL;
-        dmx->m_PrereadList->pack = NULL;
-        dmx->m_PrereadList->pos  = 0LL;
-    }
-
-    tmp = dmx->m_PrereadList;
-    while (tmp->next != NULL)
-    {
-        tmp = tmp->next;
-    }
-
-    tmp->next = (PrereadTagNode*)malloc(sizeof(PrereadTagNode));
-    if (tmp->next == NULL)
-    {
-        mp_msg(0, MSGL_V, "Allocate a new preread tag node failed\n");
-        return -1;
-    }
-    mp_msg(0, MSGL_V, "Allocate Preread List Node %p Add AVPacket = %p Packet Data = %p\n"\
-        , tmp->next, pack, pack->data);
-    tmp = tmp->next;
-    tmp->next = NULL;
-    tmp->pack = pack;
-    tmp->pos  = pos;
-    return 0;
-}
-static AVPacket* check_preread_tags (FLVDemuxInfo* dmx, long long pos)
-{
-    PrereadTagNode* tmp = dmx->m_PrereadList;
-    PrereadTagNode* cur;
-    if (tmp == NULL)
-    {
-        return NULL;
-    }
-
-    cur = tmp->next;
-    if (cur == NULL)
-    {
-        if (tmp->pack)
-        {
-            if (tmp->pack->data)
-            {
-                mp_msg(0, MSGL_V, "Free Packet data %p\n", tmp->pack->data);
-                free(tmp->pack->data);
-                tmp->pack->data = NULL;
-            }
-            mp_msg(0, MSGL_V, "Free Packet %p\n", tmp->pack);
-            free(tmp->pack);
-            tmp->pack = NULL;
-        }
-        mp_msg(0, MSGL_V, "Free Preread List Header %p\n", tmp);
-        free(tmp);
-        tmp = NULL;
-        dmx->m_PrereadList = NULL;
-        return NULL;
-    }
-
-    while(cur != NULL)
-    {
-        if (pos == cur->pos)
-        {
-            return cur->pack;
-        }
-        else if (pos > cur->pos)
-        {
-            tmp->next = cur->next;
-            if (cur->pack != NULL)
-            {
-                if (cur->pack->data != NULL)
-                {
-                    mp_msg(0, MSGL_V, "Free Packet data %p\n", cur->pack->data);
-                    free(cur->pack->data);
-                    cur->pack->data = NULL;
-                }
-                mp_msg(0, MSGL_V, "Free Packet %p\n", cur->pack);
-                free(cur->pack);
-                cur->pack = NULL;
-            }
-            mp_msg(0, MSGL_V, "Free Preread List Node %p\n", cur);
-            free (cur);
-            cur = tmp->next;
-        }
-        else
-        {
-            return NULL;
-        }
-    }
-
-    return NULL;
-}
-
-
-int flv_demux_open (DemuxContext* ctx, URLProtocol* h)
-{
-    FLVDemuxInfo* dmx;
-    if (ctx == NULL || h == NULL)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_open :: parmeter error\n");
-        return -1;
-    }
-
-    dmx = (FLVDemuxInfo*)malloc(sizeof(FLVDemuxInfo));
-    if (dmx == NULL)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_open :: allocate a new demux private data failed\n");
-        return -1;
-    }
-
-    ctx->priv_data_size = sizeof(FLVDemuxInfo);
-    ctx->priv_data = (void *)dmx;
-#ifdef _FLV_DEMUX_TEST_
-    dmx->m_FileSize = 0LL;
-#else
-    dmx->m_FileSize = (h ? h->url_seek(h, 0, SEEK_SIZE) : 0);
-#endif
-    dmx->m_AVDataOffset = 0LL;
-    dmx->m_Duration = 0L;
-    dmx->m_CurrPos = 0LL;
-    dmx->m_TagDataSize = 0L;
-    dmx->m_DemuxState = FLV_DEMUX_NONE;
-    dmx->m_TagTimestamp = 0L;
-
-    dmx->m_InputInfor.data = NULL;
-    dmx->m_InputInfor.size = 0;
-    dmx->m_InputInfor.buflength = 0;
-
-    dmx->m_AVPacket = NULL;
-
-    dmx->m_Metadata = NULL;
-
-    dmx->m_URLProtocol = h;
-    dmx->m_PrereadList = NULL;
-
-    dmx->m_IndexList.count = 0;
-    dmx->m_IndexList.elems = NULL;
-
-    mp_msg(0, MSGL_V, "flv_demux_open : OK\n");
-    return 0;
-}
-int flv_demux_probe (DemuxContext* ctx)
-{
-    FLVDemuxInfo* dmx;
-    int ret = 0;
-    if (ctx == NULL || ctx->priv_data == NULL)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_probe : parameter error\n");
-        return -1;
-    }
-    dmx = (FLVDemuxInfo*)ctx->priv_data;
-    dmx->m_CurrPos = 0LL;
-
-    ret = read_file_data(dmx, 0, FLV_FILE_HEADER_SIZE);
-    if (ret <= 0)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_probe::read_file_data : failed\n");
-        return ret;
-    }
-
-    ret = flv_parse_file_header(dmx);
-    if (ret < 0)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_probe::flv_parse_file_header : failed\n");
-        return ret;
-    }
-    return ret;
-}
-int flv_demux_close (DemuxContext* ctx)
-{
-    mp_msg(0, MSGL_INFO, "int flv_demux_close (DemuxContext* ctx)\n");
-    FLVDemuxInfo* dmx = NULL;
-    if (ctx == NULL || ctx->priv_data == NULL)
-    {
-        return -1;
-    }
-    dmx = (FLVDemuxInfo*)ctx->priv_data;
-
-    if (dmx == NULL)
-    {
-        return 0;
-    }
-    if (dmx->m_AVPacket != NULL)
-    {
-        if (dmx->m_AVPacket->data != NULL)
-        {
-            free (dmx->m_AVPacket->data);
-            dmx->m_AVPacket->data = NULL;
-        }
-    }
-
-    if (dmx->m_InputInfor.data != NULL)
-    {
-        free (dmx->m_InputInfor.data);
-        dmx->m_InputInfor.data = NULL;
-    }
-
-    if (dmx->m_IndexList.elems != NULL)
-    {
-        free (dmx->m_IndexList.elems);
-        dmx->m_IndexList.elems = NULL;
-        dmx->m_IndexList.count = 0;
-    }
-    
-    free(dmx);
-    ctx->priv_data_size = 0;
-    ctx->priv_data = NULL;
-
-    mp_msg(0, MSGL_INFO, "flv_demux_close :: OK\n");
-
-    destroy_demux_context(ctx);
-    return 0;
-}
-int flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
-{
-    FLVDemuxInfo* dmx;
-    int retval = 0;
-
-    /// Check parameters and set private data
-    if (ctx == NULL || ctx->priv_data == NULL || meta == NULL)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: parameter failed\n");
-        return -1;
-    }
-    dmx = (FLVDemuxInfo*)ctx->priv_data;
-    dmx->m_Metadata = meta;
-    memset(meta, 0, sizeof(Metadata));
-
-    /// Skip file header
-    retval = read_file_data(dmx, 0, FLV_FILE_HEADER_SIZE);
-    if (retval <= 0)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-        return retval;
-    }
-    dmx->m_CurrPos = FLV_FILE_HEADER_SIZE;
-
-    /// parse tags header
-    retval = read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_HEADER_SIZE);
-    if (retval <= 0)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-        return retval;
-    }
-    if (flv_parse_tag_header(dmx))
-    {
-        mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_header :: failed\n");
-        return -1;
-    }
-    dmx->m_CurrPos += FLV_TAGS_HEADER_SIZE;
-
-    /// Get Tag Data
-    retval = read_file_data(dmx, dmx->m_CurrPos, dmx->m_TagDataSize);
-    if (retval <= 0)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-        return retval;
-    }
-    dmx->m_CurrPos += dmx->m_TagDataSize;
-
-    meta->audiocodec = -1;
-    meta->subaudiocodec = -1;
-    meta->videocodec = -1;
-    meta->subaudiocodec = -1;
-
-    /// Parse metadata
-    if (dmx->m_DemuxState == FLV_DEMUX_MDATA)
-    {
-        if (flv_parse_tag_script(dmx))
-        {
-            mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_script :: failed\n");
-            return -1;
-        }
-
-        dmx->m_AVDataOffset = dmx->m_CurrPos + FLV_TAGS_TAILER_SIZE;
-    }
-    /// There's no onMetadata Packet, Add current packet to preread list
-    else
-    {
-        unsigned char flag;
-
-        dmx->m_AVDataOffset = FLV_FILE_HEADER_SIZE;
-        dmx->m_AVPacket = (AVPacket*)malloc(sizeof(AVPacket));
-        if (dmx->m_AVPacket == NULL)
-        {
-            mp_msg(0, MSGL_V, "Allocate Packet failed\n");
-            return -1;
-        }
-        mp_msg(0, MSGL_V, "Allocate Packet %p\n", dmx->m_AVPacket);
-        memset(dmx->m_AVPacket, 0, sizeof(AVPacket));
-
-        if (dmx->m_DemuxState == FLV_DEMUX_VIDEO)
-        {
-            if (flv_parse_tag_video(dmx))
-            {
-                mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_video :: failed\n");
-                return -1;
-            }
-            flag = dmx->m_AVPacket->data[0] & 0x0F;
-            switch(flag)
-            {
-            case 2:///< H.263
-                meta->videocodec = CODEC_ID_H263;
-                break;
-            case 7:///< AVC
-                meta->videocodec = CODEC_ID_H264;
-                break;
-            default:
-                meta->videocodec = CODEC_ID_NONE;
-                break;
-            }
-        }
-        else if (dmx->m_DemuxState == FLV_DEMUX_AUDIO)
-        {
-            unsigned char* data = NULL;
-            if (flv_parse_tag_audio(dmx))
-            {
-                mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_audio :: failed\n");
-                return -1;
-            }
-            flag = (dmx->m_AVPacket->data[0] >> 4) & 0x0F;
-            switch(flag)
-            {
-            case 2: ///< mp3
-            case 14:///< mp3
-                meta->audiocodec = CODEC_ID_MP3;
-                break;
-            case 10:///< aac
-                data = (unsigned char*)malloc(dmx->m_AVPacket->bufferlength);
-                memcpy(data, dmx->m_AVPacket->data, dmx->m_AVPacket->bufferlength);
-                meta->audiocodec = CODEC_ID_AAC;
-                meta->subaudiocodec = flv_demux_get_aac_sub_type(data);
-                free(data);
-                if (meta->subaudiocodec == -1)
-                {
-                    mp_msg(0, MSGL_V,\
-                        "flv_demux_parse_metadata :: flv_demux_get_aac_sub_type :: failed\n");
-                    return -1;
-                }
-                break;
-            default:
-                meta->audiocodec = CODEC_ID_NONE;
-                break;
-            }
-        }
-
-        add_a_preread_packet(ctx, dmx->m_AVPacket, dmx->m_AVDataOffset);
-        dmx->m_AVPacket = NULL;
-    }
-
-    /// Skip tags tailer
-    retval = read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_TAILER_SIZE);
-    if (retval <= 0)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-        return -1;
-    }
-    dmx->m_CurrPos += FLV_TAGS_TAILER_SIZE;
-
-
-    while (meta->audiocodec == -1\
-        || (meta->audiocodec == CODEC_ID_AAC && meta->subaudiocodec == -1)\
-        || meta->videocodec == -1)
-    {
-        unsigned char flag;
-        long long pos = dmx->m_CurrPos;
-
-        /// Parse Tag Header
-        retval = read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_HEADER_SIZE);
-        if (retval <= 0)
-        {
-            mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-            return -1;
-        }
-        if (flv_parse_tag_header(dmx))
-        {
-            mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_header :: failed\n");
-            return -1;
-        }
-        dmx->m_CurrPos += FLV_TAGS_HEADER_SIZE;
-
-        retval = read_file_data(dmx, dmx->m_CurrPos, dmx->m_TagDataSize);
-        if (retval <= 0)
-        {
-            mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-            return -1;
-        }
-        dmx->m_CurrPos += dmx->m_TagDataSize;
-
-        /// Add a preread AV packet
-        dmx->m_AVPacket = (AVPacket*)malloc(sizeof(AVPacket));
-        if (dmx->m_AVPacket == NULL)
-        {
-            mp_msg(0, MSGL_V, "Allocate Packet failed\n");
-            return -1;
-        }
-        mp_msg(0, MSGL_V, "Allocate Packet %p\n", dmx->m_AVPacket);
-        memset(dmx->m_AVPacket, 0, sizeof(AVPacket));
-
-        if (dmx->m_DemuxState == FLV_DEMUX_VIDEO)
-        {
-            if (flv_parse_tag_video(dmx))
-            {
-                mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_video :: failed\n");
-                return -1;
-            }
-            flag = dmx->m_AVPacket->data[0] & 0x0F;
-            switch(flag)
-            {
-            case 2:///< H.263
-                meta->videocodec = CODEC_ID_H263;
-                break;
-            case 7:///< AVC
-                meta->videocodec = CODEC_ID_H264;
-                break;
-            default:
-                meta->videocodec = CODEC_ID_NONE;
-                break;
-            }
-        }
-        else if (dmx->m_DemuxState == FLV_DEMUX_AUDIO)
-        {
-            unsigned char* data;
-            if (flv_parse_tag_audio(dmx))
-            {
-                mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: flv_parse_tag_audio :: failed\n");
-                return -1;
-            }
-            flag = (dmx->m_AVPacket->data[0] >> 4) & 0x0F;
-            switch(flag)
-            {
-            case 2: ///< mp3
-            case 14:///< mp3
-                meta->audiocodec = CODEC_ID_MP3;
-                break;
-            case 10:///< aac
-                data = (unsigned char*)malloc(dmx->m_AVPacket->bufferlength);
-                memcpy(data, dmx->m_AVPacket->data, dmx->m_AVPacket->bufferlength);
-                meta->audiocodec = CODEC_ID_AAC;
-                meta->subaudiocodec = flv_demux_get_aac_sub_type(data);
-                free(data);
-                if (meta->subaudiocodec == -1)
-                {
-                    mp_msg(0, MSGL_V,\
-                        "flv_demux_parse_metadata :: flv_demux_get_aac_sub_type :: failed\n");
-                    return -1;
-                }
-                break;
-            default:
-                meta->audiocodec = CODEC_ID_NONE;
-                break;
-            }
-        }
-        else
-        {
-            mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: unexpected tag\n");
-            return -1;
-        }
-        add_a_preread_packet(ctx, dmx->m_AVPacket, pos);
-        dmx->m_AVPacket = NULL;
-
-        /// Skip tag tailer
-        retval = read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_TAILER_SIZE);
-        if (retval <= 0)
-        {
-            mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: read_file_data :: failed\n");
-            return -1;
-        }
-        dmx->m_CurrPos += FLV_TAGS_TAILER_SIZE;
-    }
-
-
-    mp_msg(0, MSGL_V, "MetaData : \n");
-    mp_msg(0, MSGL_V, "\tmeta->audiocodec = %d\n", meta->audiocodec);
-    mp_msg(0, MSGL_V, "\tmeta->subaudioID = %d\n", meta->subaudiocodec);
-    mp_msg(0, MSGL_V, "\tmeta->videocodec = %d\n", meta->videocodec);
-    mp_msg(0, MSGL_V, "\tmeta->subvideoID = %d\n", meta->subvideocodec);
-    mp_msg(0, MSGL_V, "\tmeta->duation    = %d\n", meta->duation);
-    mp_msg(0, MSGL_V, "flv_demux_parse_metadata :: OK\n");
-
-    /// Clear private packet and mark AV data position
-    dmx->m_CurrPos = dmx->m_AVDataOffset;
-    dmx->m_Metadata = NULL;
-    return 0;
-}
-int flv_demux_read_packet (DemuxContext* ctx, AVPacket* pack)
-{
-    //mp_msg(0, MSGL_V, "flv_demux_read_packet :: MetaData : \n");
-    FLVDemuxInfo* dmx;
-    AVPacket* prepack;
+    FLVTagPacket* pkt = NULL;
+    URLProtocol*  pro = NULL;
+    UI8 temp[FLV_TAGS_HEADER_SIZE];
     int ret;
 
-    /// Check parameters and set private data
-    if (ctx == NULL || ctx->priv_data == NULL || pack == NULL)
+    if (dmx == NULL || dmx->m_URLProtocol == NULL)
     {
-        mp_msg(0, MSGL_V, "flv_demux_read_packet :: parameters error\n");
-        return -1;
-    }
-    dmx = (FLVDemuxInfo*)ctx->priv_data;
-    prepack = NULL;
-    
-    /// if read a preread packet, no need to skip
-    if (dmx->m_PrereadList != NULL)
-    {
-        prepack = check_preread_tags(dmx, dmx->m_CurrPos);
-    }
-    if (prepack != NULL)
-    {
-        pack->bufferlength = prepack->bufferlength;
-        pack->size = prepack->size;
-        pack->pts  = prepack->pts;
-        pack->stream_index = prepack->stream_index;
-        if (pack->data != NULL)
-        {
-            free (pack->data);
-            mp_msg(0, MSGL_V, "Free Packet Data %p LENS %d\n", pack->data, pack->bufferlength);
-        }
-        pack->data = prepack->data; ///< pure data is given packet parameter
-        prepack->data = NULL;       ///< and then i set pre-read pakcet data as null and i left it
-
-        dmx->m_CurrPos += (FLV_TAGS_HEADER_SIZE + pack->size + FLV_TAGS_TAILER_SIZE);
-
-        mp_msg(0, MSGL_DBG2\
-            , "flv_demux_read_packet :: Type = %-2d Pts = %-6lld\t Size = %-6d\t Pos = %-8lld\n"\
-            , pack->stream_index, pack->pts, pack->size, dmx->m_CurrPos);
-
-        return pack->size;
+        return FALSE;
     }
 
-    dmx->m_AVPacket = pack;
-    /// parse tags header
-    ret = read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_HEADER_SIZE);
-    if (ret <= 0)
+    pkt->m_TagPosition = dmx->m_CurrentPosition;
+
+    pkt = &dmx->m_CurrentPacket;
+    pro = dmx->m_URLProtocol;
+
+    /// Skip Tag Header
+    ret = pro->url_read(pro, temp, FLV_TAGS_HEADER_SIZE);
+    if (0 == ret)
     {
-        mp_msg(0, MSGL_V, "flv_demux_read_packet :: read_file_data :: failed\n");
-        return ret;
+        pkt->m_TagDataSize = 0UL;
+        return TRUE;
+    }
+    if (FLV_TAGS_HEADER_SIZE != ret)
+    {
+        return FALSE;
     }
 
-    if (flv_parse_tag_header(dmx) < 0)
+    /// Parse Tag Header
+    if (flv_parse_tag_header(pkt, temp, FLV_TAGS_HEADER_SIZE) == FALSE)
     {
         int i = 0;
-        mp_msg (0, MSGL_V\
-            , "flv_demux_read_packet :: flv_parse_tag_header :: Not Support Tag, POS = %lld\n"\
-            , dmx->m_CurrPos - FLV_TAGS_HEADER_SIZE);
-        mp_msg (0, MSGL_V, "flv_demux_read_packet :: Error Data : \n");
-        while (i < 11)
+        printf ("DEMUX ################ flv_demux_get_tag_packet :: Get Illegal Data : ");
+        while (i < FLV_TAGS_HEADER_SIZE)
         {
-            mp_msg(0, MSGL_V, "0x%02X ", dmx->m_InputInfor.data[i]);
+            printf ("0x%02X ", temp[i]);
             ++i;
         }
-        mp_msg (0, MSGL_V, "\n");
-        return -1;
+        printf ("\n");
+        return FALSE;
     }
-    dmx->m_CurrPos += FLV_TAGS_HEADER_SIZE;
 
-    while (dmx->m_DemuxState == FLV_DEMUX_MDATA)
+    /// Check If Buffer Space Is Enough
+    if (pkt->m_TagBufferLen < pkt->m_TagDataSize)
     {
-        ret = read_file_data (dmx, dmx->m_CurrPos, dmx->m_TagDataSize + FLV_TAGS_TAILER_SIZE);
-        if (ret <= 0)
+        if (pkt->m_TagData != NULL)
         {
-            mp_msg (0, MSGL_V, "flv_demux_read_packet :: read_file_data :: fail");
-            return -1;
+            free (pkt->m_TagData);
+            pkt->m_TagData = NULL;
         }
-        dmx->m_CurrPos += (dmx->m_TagDataSize + FLV_TAGS_TAILER_SIZE);
+        pkt->m_TagData = (UI8*)malloc(pkt->m_TagDataSize);
+        if (pkt->m_TagData == NULL)
+        {
+            return FALSE;
+        }
+        pkt->m_TagBufferLen = pkt->m_TagDataSize;
+    }
 
-        ret = read_file_data (dmx, dmx->m_CurrPos, FLV_TAGS_HEADER_SIZE);
-        if (ret <= 0)
+    /// Read Tag Data
+    if (pkt->m_TagDataSize != pro->url_read(pro, pkt->m_TagData, pkt->m_TagDataSize))
+    {
+        return FALSE;
+    }
+
+    /// Skip Tag Tailer
+    if (FLV_TAGS_TAILER_SIZE != pro->url_read(pro, temp, FLV_TAGS_TAILER_SIZE))
+    {
+        return FALSE;
+    }
+
+    pkt->m_TagPosition = dmx->m_CurrentPosition;
+    dmx->m_CurrentPosition += (pkt->m_TagDataSize + FLV_TAGS_HEADER_SIZE + FLV_TAGS_TAILER_SIZE);
+    return TRUE;
+}
+static BOOL          flv_demux_add_a_prepacket (FLVDemuxer* dmx)
+{
+    PrereadTags* temp = NULL;
+    
+    if (dmx == NULL)
+    {
+        return FALSE;
+    }
+
+    temp = &dmx->m_PrereadTagList;
+    while (temp->m_Next != NULL)
+    {
+        temp = temp->m_Next;
+    }
+    temp->m_Next = (PrereadTags*)malloc(sizeof(PrereadTags));
+    if (temp->m_Next == NULL)
+    {
+        return FALSE;
+    }
+    temp = temp->m_Next;
+    temp->m_Next   = NULL;
+    temp->m_Packet = (FLVTagPacket*)malloc(sizeof(FLVTagPacket));
+    if (temp->m_Packet == NULL)
+    {
+        return FALSE;
+    }
+    memcpy (&temp->m_Packet, &dmx->m_CurrentPacket, sizeof(FLVTagPacket));
+    dmx->m_CurrentPacket.m_TagData = NULL;
+    return TRUE;
+}
+static BOOL          flv_demux_check_prepacket_list (FLVDemuxer* dmx, UI64 pos, AVPacket* pkt)
+{
+    PrereadTags* temp = NULL;
+
+    if (dmx == NULL)
+    {
+        return FALSE;
+    }
+
+    temp = dmx->m_PrereadTagList.m_Next;
+    while (temp != NULL)
+    {
+        FLVTagPacket* pack;
+        pack = temp->m_Packet;
+        if (pack != NULL && pack->m_TagPosition == pos)
         {
-            mp_msg (0, MSGL_V, "flv_demux_read_packet :: read_file_data :: fail");
-            return -1;
-        }
-        dmx->m_CurrPos += (FLV_TAGS_HEADER_SIZE);
-        if (flv_parse_tag_header(dmx) < 0)
-        {
-            int i = 0;
-            mp_msg (0, MSGL_V\
-                , "flv_demux_read_packet :: flv_parse_tag_header :: Not Support Tag, POS = %lld\n"\
-                , dmx->m_CurrPos - FLV_TAGS_HEADER_SIZE);
-            mp_msg (0, MSGL_V, "flv_demux_read_packet :: Error Data : ");
-            while (i < 11)
+            /// Free Data in AVPacket
+            if (pkt->data != NULL)
             {
-                mp_msg(0, MSGL_V, "0x%02X ", dmx->m_InputInfor.data[i]);
-                ++i;
+                free (pkt->data);
+                pkt->data = NULL;
             }
-            mp_msg (0, MSGL_V, "\n");
+            /// Reset AVPacket Members
+            memset(pkt, 0, sizeof(AVPacket));
+            pkt->pts    = pack->m_TagTimestamp;
+            pkt->data   = pack->m_TagData; pack->m_TagData = NULL;
+            pkt->size   = pack->m_TagDataSize;
+            pkt->bufferlength = pack->m_TagBufferLen;
+            pkt->stream_index = pack->m_TagType;
+            /// Free Pre-read Packet and PrereadTags Node
+            free (pack);
+            pack = temp->m_Packet = NULL;
+            dmx->m_PrereadTagList.m_Next = temp->m_Next;
+            free (temp);
+            temp = dmx->m_PrereadTagList.m_Next;
+
+            dmx->m_CurrentPosition += pkt->size;
+            return TRUE;
         }
+        else if (pack->m_TagPosition > pos)
+        {
+            if (pack != NULL)
+            {
+                if (pack->m_TagData != NULL)
+                {
+                    free (pack->m_TagData);
+                    pack->m_TagData = NULL;
+                }
+                free (pack);
+                pack = temp->m_Packet = NULL;
+            }
+            dmx->m_PrereadTagList.m_Next = temp->m_Next;
+            free (temp);
+            temp = dmx->m_PrereadTagList.m_Next;
+        }
+        else
+        {
+            return FALSE;
+        }
+    }
+    return FALSE;
+}
+
+int       flv_demux_open (DemuxContext* ctx, URLProtocol* h)
+{
+    FLVDemuxer* dmx;
+    I8  errstr[64];
+    int errtyp = MSGL_V;
+
+    do{
+        if (ctx == NULL || h == NULL)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Parameters Error");
+            break;
+        }
+
+        dmx = (FLVDemuxer*)malloc(sizeof(FLVDemuxer));
+        if (dmx == NULL)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Allocate Private Data Falied");
+            break;
+        }
+        memset (dmx, 0, sizeof(FLVDemuxer));
+
+        ctx->priv_data_size     = sizeof(FLVDemuxer);
+        ctx->priv_data          = (void *)dmx;
+
+        dmx->m_AudioBitRate     = 0UL;
+        dmx->m_VideoBitRate     = 0UL;
+        dmx->m_FileDuration     = 0ULL;
+        dmx->m_CurrentPosition  = 0ULL;
+        dmx->m_URLProtocol      = h;
+        memset (&dmx->m_CurrentPacket,  0, sizeof(FLVTagPacket));
+        memset (&dmx->m_PrereadTagList, 0, sizeof(PrereadTags));
+
+        errtyp = MSGL_V;
+        strcpy(errstr, "Open Demux Success");
+    }while(0);
+
+    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    return (errtyp == MSGL_ERR ? -1 : 0);
+}
+int       flv_demux_probe (DemuxContext* ctx)
+{
+    FLVDemuxer*  dmx = NULL;
+    URLProtocol* pro = NULL;
+    UI8 temp[FLV_FILE_HEADER_SIZE];
+    I8  errstr[64];
+    int errtyp = MSGL_V;
+
+    do{
+        if ((ctx == NULL) || ((dmx = (FLVDemuxer*)ctx->priv_data) == NULL)\
+            || ((pro = dmx->m_URLProtocol) == NULL))
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Parameter Error");
+            break;
+        }
+
+        if (FLV_FILE_HEADER_SIZE != pro->url_read(pro, temp, FLV_FILE_HEADER_SIZE))
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Read Data Failed");
+            break;
+        }
+
+        if (temp[0] != 'F' || temp[1] != 'L' || temp[2] != 'V')
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "File Is Not a FLV File");
+            break;
+        }
+        errtyp = MSGL_V;
+        strcpy(errstr, "Probe File is available");
+    }while(0);
+
+    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    return (errtyp == MSGL_ERR ? -1 : 0);
+}
+int       flv_demux_close (DemuxContext* ctx)
+{
+    FLVDemuxer*  dmx  = NULL;
+    PrereadTags* tags = NULL;
+    PrereadTags* temp = NULL;
+    I8  errstr[64];
+    int errtyp = MSGL_V;
+
+    if ((ctx == NULL) || ((dmx = (FLVDemuxer*)ctx->priv_data) == NULL))
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Parameter Error");
+        goto FLV_DEMUX_CLOSE_ERROR;
     }
 
-    /// Get and parse AV tag data
-    ret = read_file_data(dmx, dmx->m_CurrPos, dmx->m_TagDataSize);
-    if (ret <= 0)
+    /// XXX Free Pre-read List
+    tags = &dmx->m_PrereadTagList;
+    if (tags->m_Packet != NULL)
     {
-        mp_msg(0, MSGL_V, "flv_demux_read_packet :: read_file_data :: failed\n");
-        return ret;
-    }
-    if (dmx->m_DemuxState == FLV_DEMUX_AUDIO)
-    {
-        if (flv_parse_tag_audio(dmx))
+        if (tags->m_Packet->m_TagData != NULL)
         {
-            mp_msg(0, MSGL_V, "flv_demux_read_packet :: flv_parse_tag_audio :: failed\n");
-            return -1;
+            free (tags->m_Packet->m_TagData);
+            tags->m_Packet->m_TagData = NULL;
         }
+        free (tags->m_Packet);
+        tags->m_Packet = NULL;
     }
-    else if (dmx->m_DemuxState == FLV_DEMUX_VIDEO)
+    temp = tags->m_Next;
+    while (temp != NULL)
     {
-        if (flv_parse_tag_video(dmx))
+        tags->m_Next = temp->m_Next;
+        if (temp->m_Packet != NULL)
         {
-            mp_msg(0, MSGL_V, "flv_demux_read_packet :: flv_parse_tag_video :: failed\n");
-            return -1;
+            if (temp->m_Packet->m_TagData != NULL)
+            {
+                free (temp->m_Packet->m_TagData);
+                temp->m_Packet->m_TagData = NULL;
+            }
+            free (temp->m_Packet);
+            temp->m_Packet = NULL;
+        }
+        free (temp);
+        temp = tags->m_Next;
+    }
+    /// XXX Free Timestamps Index
+    if (NULL != dmx->m_TimestampIndex.m_Index)
+    {
+        free (dmx->m_TimestampIndex.m_Index);
+        dmx->m_TimestampIndex.m_Index = NULL;
+    }
+    /// XXX Free Current Packet in #FLVDemuxer
+    if (NULL != dmx->m_CurrentPacket.m_TagData)
+    {
+        free (dmx->m_CurrentPacket.m_TagData);
+        dmx->m_CurrentPacket.m_TagData = NULL;
+    }
+
+    errtyp = MSGL_V;
+    strcpy(errstr, "Close Demux Success");
+
+FLV_DEMUX_CLOSE_ERROR:
+    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    return (errtyp == MSGL_ERR ? -1 : 0);
+}
+int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
+{
+    FLVDemuxer*   dmx = NULL;
+    URLProtocol*  pro = NULL;
+    UI8  header[FLV_FILE_HEADER_SIZE];
+    I8   errstr[64];
+    UI8  errtyp = MSGL_V;
+    UI64 avoffset = 0ULL;
+    BOOL flag;
+
+    if ((ctx == NULL) || ((dmx = (FLVDemuxer*)ctx->priv_data) == NULL)\
+        || ((pro = dmx->m_URLProtocol) == NULL))
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Parameter Error");
+        goto FLV_DEMUX_PARSE_METADATA_ERROR;
+    }
+    /// XXX Skip FLV File Header
+    if (FLV_FILE_HEADER_SIZE != pro->url_read(pro, header, FLV_FILE_HEADER_SIZE))
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Skip File Header Failed");
+        goto FLV_DEMUX_PARSE_METADATA_ERROR;
+    }
+    dmx->m_CurrentPosition = FLV_FILE_HEADER_SIZE;
+
+    /// Read A Tag Packet : #FLV_TAGS_HEADER_SIZE + Tag Data Size + #FLV_TAGS_TAILER_SIZE;
+    flag = flv_demux_get_tag_packet (dmx);
+    if (FALSE == flag)
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Get Tag Packet Failed");
+        goto FLV_DEMUX_PARSE_METADATA_ERROR;
+    }
+    else if (TRUE == flag && dmx->m_CurrentPacket.m_TagDataSize == 0UL)
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "File Termination Unexpected");
+        goto FLV_DEMUX_PARSE_METADATA_ERROR;
+    }
+
+    meta->audiocodec    = -1;
+    meta->subaudiocodec = -1;
+    meta->videocodec    = -1;
+    meta->subaudiocodec = -1;
+
+    if (dmx->m_CurrentPacket.m_TagType == MDATA_FLV_STREAM_ID)
+    {
+        avoffset = dmx->m_CurrentPosition;
+        if (flv_parse_tag_script(&dmx->m_CurrentPacket, &dmx->m_TimestampIndex, meta) == FALSE)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Parse Tag Script Failed");
+            goto FLV_DEMUX_PARSE_METADATA_ERROR;
         }
     }
     else
     {
-        mp_msg(0, MSGL_V, "flv_demux_read_packet :: Unanalyzable tag type");
-        return -1;
+        UI8  flag = dmx->m_CurrentPacket.m_TagData[0];
+        avoffset = (dmx->m_CurrentPosition - dmx->m_CurrentPacket.m_TagDataSize\
+            - FLV_TAGS_HEADER_SIZE + FLV_TAGS_TAILER_SIZE);
+        if (dmx->m_CurrentPacket.m_TagType == AUDIO_FLV_STREAM_ID)
+        {
+            flag = (flag >> 4) & 0x0F;
+            switch(flag)
+            {
+            case 2: ///< mp3
+            case 14:///< mp3
+                meta->audiocodec = CODEC_ID_MP3;
+                break;
+            case 10:///< aac
+                meta->audiocodec = CODEC_ID_AAC;
+                meta->subaudiocodec = DACF_ADIF;
+                break;
+            default:
+                meta->audiocodec = CODEC_ID_NONE;
+                break;
+            }
+        }
+        else
+        {
+            flag = flag & 0x0F;
+            switch(flag)
+            {
+            case 2:
+                meta->videocodec = CODEC_ID_H263;
+                break;
+            case 7:
+                meta->videocodec = CODEC_ID_H264;
+                break;
+            default:
+                meta->videocodec = CODEC_ID_NONE;
+                break;
+            }
+        }
+        if (FALSE == flv_demux_add_a_prepacket(dmx))
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Add A Pre-read Packet Failed");
+            goto FLV_DEMUX_PARSE_METADATA_ERROR;
+        }
     }
-    dmx->m_CurrPos += dmx->m_TagDataSize;
 
-    /// Skip tag tailer
-    ret = read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_TAILER_SIZE);
-    if (ret <= 0)
+    while ((meta->audiocodec == -1)\
+        || (meta->audiocodec == CODEC_ID_AAC && meta->subaudiocodec == -1)\
+        || (meta->videocodec == -1))
     {
-        mp_msg(0, MSGL_V, "flv_demux_read_packet :: read_file_data :: failed\n");
-        return -1;
+        UI8  flag = 0U;
+
+        do 
+        {
+            BOOL readflag = flv_demux_get_tag_packet (dmx);
+            if (FALSE == readflag)
+            {
+                errtyp = MSGL_ERR;
+                strcpy(errstr, "Get Tag Packet Failed");
+                goto FLV_DEMUX_PARSE_METADATA_ERROR;
+            }
+            else if (TRUE == readflag && dmx->m_CurrentPacket == 0UL)
+            {
+                errtyp = MSGL_V;
+                strcpy(errstr, "File End");
+                goto FLV_DEMUX_PARSE_METADATA_ERROR;
+            }
+        }while(dmx->m_CurrentPacket.m_TagType != MDATA_FLV_STREAM_ID);
+
+        flag = dmx->m_CurrentPacket.m_TagData[0];
+
+        if (dmx->m_CurrentPacket.m_TagType == AUDIO_FLV_STREAM_ID)
+        {
+            flag = (flag >> 4) & 0x0F;
+            switch(flag)
+            {
+            case 2: ///< mp3
+            case 14:///< mp3
+                meta->audiocodec = CODEC_ID_MP3;
+                break;
+            case 10:///< aac
+                meta->audiocodec = CODEC_ID_AAC;
+                meta->subaudiocodec = DACF_ADIF;
+                break;
+            default:
+                meta->audiocodec = CODEC_ID_NONE;
+                break;
+            }
+        }
+        else
+        {
+            flag = flag & 0x0F;
+            switch(flag)
+            {
+            case 2:
+                meta->videocodec = CODEC_ID_H263;
+                break;
+            case 7:
+                meta->videocodec = CODEC_ID_H264;
+                break;
+            default:
+                meta->videocodec = CODEC_ID_NONE;
+                break;
+            }
+        }
+        if (FALSE == flv_demux_add_a_prepacket(dmx))
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Add A Pre-read Packet Failed");
+            goto FLV_DEMUX_PARSE_METADATA_ERROR;
+        }
     }
-    dmx->m_CurrPos += FLV_TAGS_TAILER_SIZE;
-
-    mp_msg(0, MSGL_DBG2\
-        , "flv_demux_read_packet :: Type = %d Pts = %-8lld\t Size = %-6ld\t Pos = %-8lld\n"\
-        , pack->stream_index, pack->pts, pack->size, dmx->m_CurrPos);
-
-    /// Clear private data
-    dmx->m_AVPacket = NULL;
-    return pack->size;
+    errtyp = MSGL_V;
+    strcpy(errstr, "Parsing Metadata Successfully");
+FLV_DEMUX_PARSE_METADATA_ERROR:
+    dmx->m_CurrentPosition = avoffset;
+    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    if (errtyp == MSGL_V)
+    {
+        mp_msg(0, errtyp, "DEMUX ################ VIDEO_ID = %d\n", meta->videocodec);
+        mp_msg(0, errtyp, "DEMUX ################ AUDIO_ID = %d\n", meta->audiocodec);
+        mp_msg(0, errtyp, "DEMUX ################ V_SUB_ID = %d\n", meta->subvideocodec);
+        mp_msg(0, errtyp, "DEMUX ################ A_SUB_ID = %d\n", meta->subaudiocodec);
+        mp_msg(0, errtyp, "DEMUX ################ V_BITRAT = %d\n", meta->vbitrate);
+        mp_msg(0, errtyp, "DEMUX ################ A_BITRAT = %d\n", meta->abitrate);
+        mp_msg(0, errtyp, "DEMUX ################ DURATION = %d\n", meta->duation);
+    }
+    return (errtyp == MSGL_ERR ? -1 : 0);
 }
+int       flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt)
+{
+    FLVDemuxer* dmx;
+    I8   errstr[64];
+    UI8  errtyp = MSGL_V;
+
+    if ((ctx == NULL) || (dmx = (FLVDemuxer*)ctx->priv_data) == NULL || (pkt == NULL)\
+        || (dmx->m_URLProtocol == NULL))
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Parameter Error");
+        goto FLV_DEMUX_READ_PACKET_ERROR;
+    }
+
+    if (TRUE == flv_demux_check_prepacket_list(dmx, dmx->m_CurrentPosition, pkt))
+    {
+        goto FLV_DEMUX_READ_PACKET_OK;
+    }
+
+    do
+    {
+        BOOL readflag = flv_demux_get_tag_packet (dmx);
+        if (FALSE == readflag)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Get Tag Packet Failed");
+            goto FLV_DEMUX_READ_PACKET_ERROR;
+        }
+        else if (TRUE = readflag && dmx->m_CurrentPacket == 0UL)
+        {
+            errtyp = MSGL_V;
+            strcpy(errstr, "File End");
+            goto FLV_DEMUX_READ_PACKET_ERROR;
+        }
+    }while(dmx->m_CurrentPacket.m_TagType != MDATA_FLV_STREAM_ID);
+
+    if (pkt->bufferlength < dmx->m_CurrentPacket.m_TagDataSize)
+    {
+        if (pkt->data != NULL)
+        {
+            free (pkt->data);
+            pkt->data = NULL;
+        }
+        pkt->data = (UI8*)malloc(dmx->m_CurrentPacket.m_TagDataSize);
+        if (pkt->data == NULL)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Re-Allocate AVPacket Data Space Failed");
+            goto FLV_DEMUX_READ_PACKET_ERROR;
+        }
+        pkt->bufferlength = dmx->m_CurrentPacket.m_TagDataSize;
+    }
+    pkt->size = dmx->m_CurrentPacket.m_TagDataSize;
+    memcpy(pkt->data, dmx->m_CurrentPacket.m_TagData, pkt->size);
+    goto FLV_DEMUX_READ_PACKET_OK;
+
+FLV_DEMUX_READ_PACKET_ERROR:
+    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    return (errtyp == MSGL_ERR ? -1 : 0);
+FLV_DEMUX_READ_PACKET_OK:
+    mp_msg(0, errtyp, "DEMUX ################ TYPE = %d PTS = %8lld SIZE = %8d LENS = %8d\n"\
+        , pkt->stream_index, pkt->pts, pkt->size, pkt->bufferlength);
+    return pkt->size;
+}
+long long flv_demux_seek (DemuxContext* ctx, long long ts)
+{
+
+}
+int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta)
+{
+
+}
+
+#if 0
 long long flv_demux_seek (DemuxContext* ctx, long long ts)
 {
     FLVDemuxInfo* dmx   = NULL;
@@ -878,7 +735,7 @@ long long flv_demux_seek (DemuxContext* ctx, long long ts)
 
             while (1)
             {
-                /// circle exit condition : 
+                /// circle exit condition :
                 /// Test 5 tags success and tested 1 video tag at least
                 /// if the video format is AVC,tested 1 key frame tag at least and mark the position
                 if(validtags >= 5 && havevideo == 1)
@@ -1036,7 +893,7 @@ int flv_demux_parse_codec_from_raw_data(unsigned char data[], int size, Metadata
         int flag = 0;
         int data_type = 0;
 
-        do 
+        do
         {
             unsigned short namelens;
             unsigned char elemname[128];
@@ -1221,3 +1078,4 @@ int flv_demux_parse_codec_from_raw_data(unsigned char data[], int size, Metadata
 
     return 0;
 }
+#endif

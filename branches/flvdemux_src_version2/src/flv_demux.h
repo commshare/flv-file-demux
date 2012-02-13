@@ -20,7 +20,7 @@ typedef struct FLVTagPacket
 {
     FLVTagType          m_TagType;          ///< Tag type
     UI64                m_TagPosition;      ///< Tag start position
-    UI64                m_TagDataSize;      ///< Tag data size
+    UI32                m_TagDataSize;      ///< Tag data size
     UI32                m_TagTimestamp;     ///< Tag timestamp
     UI32                m_TagBufferLen;     ///< Tag buffer length
     UI8*                m_TagData;          ///< Tag data
@@ -29,7 +29,7 @@ typedef struct FLVTagPacket
 typedef struct FLVTSInfo
 {
     UI64                m_FilePos;          ///< Key frame file position
-    UI32                m_TimePos;          ///< Key frame time position
+    UI64                m_TimePos;          ///< Key frame time position
 }FLVTSInfo;
 /// @brief FLV Timestam indexes
 typedef struct TimestampInd
@@ -46,10 +46,14 @@ typedef struct PrereadTags
 /// @brief FLV demux info
 typedef struct FLVDemuxer
 {
+    UI32                m_AudioBitRate;     ///< Audio bitrate
+    UI32                m_VideoBitRate;     ///< Video bitrate
+    UI64                m_FileDuration;     ///< File Duration
     UI64                m_CurrentPosition;  ///< Current Demux Position
     FLVTagPacket        m_CurrentPacket;    ///< Current Tag Packet
     PrereadTags         m_PrereadTagList;   ///< Pre-read tag list
     TimestampInd        m_TimestampIndex;   ///< Timestamp Index
+    URLProtocol*        m_URLProtocol;      ///< URL Protocol for getting data
 }FLVDemuxer;
 
 

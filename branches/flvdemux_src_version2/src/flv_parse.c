@@ -5,139 +5,90 @@
 #include "flv_parse.h"
 #include "byte_parse.h"
 
-int flv_parse_file_header (FLVDemuxInfo* dmx)
+BOOL flv_parse_tag_header (FLVTagPacket* pkt, UI8* data, UI32 size)
 {
-    unsigned char* data = dmx->m_InputInfor.data;
+    UI8  amf_tag_type;
+    UI8  tag_extend_timestamp;
 
-    if (data[0] == 'F' && data[1] == 'L' && data[2] == 'V')
+    if (pkt == NULL)
     {
-        return 0;
+        return FALSE;
     }
-    return -1;
-}
-int flv_parse_tag_header (FLVDemuxInfo* dmx)
-{
-    unsigned char* data = dmx->m_InputInfor.data;
-    int size = dmx->m_InputInfor.size;
 
-    int tag_type = (int)data[0];
-    switch((FLVTagType)tag_type)
+    if (get_Byte (&data, &size, &amf_tag_type) == FALSE)
     {
-    case FLV_AUDIO_TAG:
-        dmx->m_DemuxState = FLV_DEMUX_AUDIO;
-        break;
-    case FLV_VIDEO_TAG:
-        dmx->m_DemuxState = FLV_DEMUX_VIDEO;
-        break;
-    case FLV_SCIRPT_TAG:
-        dmx->m_DemuxState = FLV_DEMUX_MDATA;
+        return FALSE;
+    }
+
+    switch((FLVTagType)amf_tag_type)
+    {
+    case AUDIO_FLV_STREAM_ID:
+    case VIDEO_FLV_STREAM_ID:
+    case MDATA_FLV_STREAM_ID:
+        pkt->m_TagType = (FLVTagType)amf_tag_type;
         break;
     default:
-        dmx->m_TagDataSize = 0;
-        dmx->m_DemuxState = FLV_DEMUX_NONE;
+        pkt->m_TagType = FLV_ERROR_TAG_TYPE;
         return -1;
     }
 
-    data += 1;
-    size -= 1;
-    dmx->m_TagDataSize = is_little_endian() ? (long)get_le24_net(data, size)\
-        : (long)get_be24_net(data, size);
-    data += 3;
-    size -= 3;
-    dmx->m_TagTimestamp = is_little_endian() ? (long)get_le24_net(data, size)\
-        : (long)get_be24_net(data, size);
-    data += 3;
-    size -= 3;
-    dmx->m_TagTimestamp |= (get_byte_net(data, size)) << 24;
-    return 0;
+
+    if (get_UI24 (&data, &size, &pkt->m_TagDataSize) == FALSE)
+    {
+        return FALSE;
+    }
+    if (get_UI24 (&data, &size, &pkt->m_TagTimestamp) == FALSE)
+    {
+        return FALSE;
+    }
+    if (get_Byte (&data, &size, &tag_extend_timestamp) == FALSE)
+    {
+        return FALSE;
+    }
+    pkt->m_TagTimestamp &= 0x00FFFFFF;
+    pkt->m_TagTimestamp |= (tag_extend_timestamp << 24);
+
+    return TRUE;
 }
-int flv_parse_tag_script (FLVDemuxInfo* dmx)
+BOOL flv_parse_tag_script (const FLVTagPacket* pkt, TimestampInd* index, Metadata* mdata)
 {
-    unsigned char* data = dmx->m_InputInfor.data;
-    int size = dmx->m_InputInfor.size;
-    Metadata* meta = dmx->m_Metadata;
+    UI8* data = NULL;
+    UI32 size = 0UL;
+    UI8  flag = 0U;
 
-    meta->streams = 2;
-    meta->audiostreamindex = 0x08;
-    meta->videostreamindex = 0x09;
-    meta->fileformat = FILEFORMAT_ID_FLV;
-
-    /* the 1st element type must be 0x02, and string is "onMetaData" */
-    if (data[0] != 0x02)
+    if ((pkt == NULL) || ((data = pkt->m_TagData) == NULL) || (size = pkt->m_TagDataSize) < 14UL)
     {
-        return -1;
+        return FALSE;
     }
-    if (10 != get_ui16(&data[1], size - 1))
-    {
-        return -1;
-    }
-    if (memcmp(&data[3], "onMetaData", 10) != 0)
-    {
-        return -1;
-    }
-    data += 13;
-    size -= 13;
-
-    if (data[0] == 0x08)
-    {
-        return amf_parse_ecma_array(dmx, &data, &size);
-    }
-    if (data[0] == 0x03)
-    {
-        return amf_parse_object(dmx, &data, &size);
-    }
-
-    return -1;
-}
-int flv_parse_tag_audio (FLVDemuxInfo* dmx)
-{
-    AVPacket* pkt = dmx->m_AVPacket;
     
-    pkt->pts  = dmx->m_TagTimestamp;
-    pkt->size = dmx->m_TagDataSize;
-    pkt->stream_index = 0x08;
-    if (pkt->bufferlength < pkt->size)
-    {
-        if (pkt->data != NULL)
-        {
-            free(pkt->data);
-            mp_msg(0, MSGL_V, "Free Packet Data %p LENS = %d\n", pkt->data, pkt->bufferlength);
-            pkt->data = NULL;
-        }
-        pkt->data = (unsigned char *)malloc(pkt->size);
-        mp_msg(0, MSGL_V, "Allocate Packet Data %p LENS = %d\n", pkt->data, pkt->size);
-        if (pkt->data == NULL)
-        {
-            return -1;
-        }
-        pkt->bufferlength = pkt->size;
-    }
-    memcpy(pkt->data, dmx->m_InputInfor.data, pkt->size);
-    return 0;
-}
-int flv_parse_tag_video (FLVDemuxInfo* dmx)
-{
-    AVPacket* pkt = dmx->m_AVPacket;
+    flag = data[13];
+    mdata->streams = 2;
+    mdata->audiostreamindex = 0x08;
+    mdata->videostreamindex = 0x09;
+    mdata->fileformat = FILEFORMAT_ID_FLV;
 
-    pkt->pts  = dmx->m_TagTimestamp;
-    pkt->size = dmx->m_TagDataSize;
-    pkt->stream_index = 0x09;
-    if (pkt->bufferlength < pkt->size)
+    if (data[0] != 0x02 || data[1] != 0x00 || data[2] != 0x0A\
+        || memcmp(&data[3], "onMetadata", 10) != 0 || (data[13] != 0x03 && data[13] != 0x08))
     {
-        if (pkt->data != NULL)
-        {
-            free(pkt->data);
-            mp_msg(0, MSGL_V, "Free Packet Data %p LENS = %d\n", pkt->data, pkt->bufferlength);
-            pkt->data = NULL;
-        }
-        pkt->data = (unsigned char *)malloc(pkt->size);
-        mp_msg(0, MSGL_V, "Allocate Packet Data %p LENS = %d\n", pkt->data, pkt->size);
-        if (pkt->data == NULL)
-        {
-            return -1;
-        }
-        pkt->bufferlength = pkt->size;
+        return FALSE;
     }
-    memcpy(pkt->data, dmx->m_InputInfor.data, pkt->size);
-    return 0;
+
+    
+
+    data += 14;
+    size -= 14;
+
+    if (flag == 0x08)
+    {
+        return amf_parse_ecma_array(&data, &size, index, mdata);
+    }
+    else if (flag == 0x03)
+    {
+        return amf_parse_object(&data, &size, index, mdata);
+    }
+    else
+    {
+        return FALSE;
+    }
+    return TRUE;
 }

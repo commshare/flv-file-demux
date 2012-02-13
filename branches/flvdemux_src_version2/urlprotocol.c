@@ -1,5 +1,6 @@
 #include "urlprotocol.h"
 #include <string.h>
+#include <malloc.h>
 
 static URLProtocol * g_protocolList = 0;
 ///
@@ -61,7 +62,7 @@ char * getExtensionFromUrl(const char *url)
                 {
                     return 0;
                 }
-                return strdup(p);
+                return _strdup(p);
             }
             return 0;
         }
@@ -72,7 +73,7 @@ char * getExtensionFromUrl(const char *url)
         p = strrchr(url, '.');
         if(p)
         {
-            return strdup(p);
+            return _strdup(p);
         }
     }
 

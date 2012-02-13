@@ -1,3 +1,9 @@
+/// @file    amf_parse.h
+/// @brief   Parse AMF0 raw data
+/// @author  fangj@xinli.com.cn
+/// @version 1.0
+/// @date    2012-02-10
+
 #ifndef AMF_PARSER_H
 #define AMF_PARSER_H
 
@@ -25,11 +31,10 @@ typedef enum AMFType
     TYPED_OBJECT_MARKER = 0x10  ///< This program does not supported this AMF data type
 }AMFType;
 
-BOOL amf_parse_elem_name    (UI8** buf, UI32 *size, UI8** data, UI16* lens);
-BOOL amf_parse_skip_bytes   (UI8** buf, UI32* size, UI8   type);
+BOOL amf_parse_elem_name    (UI8** buf, UI32* size, UI8** data, UI16* lens);
 BOOL amf_parse_number       (UI8** buf, UI32* size, UI64* data);
-BOOL amf_parse_object       (UI8** buf, UI32* size, Metadata* data);
-BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, FLVDemuxer* dmx);
-BOOL amf_parse_strict_array (UI8** buf, UI32* size, FLVDemuxer* dmx);
+BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadata* mdata);
+BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadata* mdata);
+BOOL amf_parse_strict_array (UI8** buf, UI32* size, TimestampInd* index, UI8* flag);
 
 #endif/*AMF_PARSER_H*/

@@ -328,12 +328,13 @@ enum FileFormatID{
     FILEFORMAT_ID_3GP
 };
 
-enum FLVTagType
+typedef enum FLVTagType
 {
+    FLV_ERROR_TAG_TYPE  = 0x00,
     AUDIO_FLV_STREAM_ID = 0x08,
     VIDEO_FLV_STREAM_ID = 0x09,
     MDATA_FLV_STREAM_ID = 0x12
-};
+}FLVTagType;
 
 typedef struct Metadata{
     int fileformat;

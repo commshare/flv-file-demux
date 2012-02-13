@@ -7,18 +7,7 @@
 #include <memory.h>
 #include "flv_demux.h"
 
-typedef enum
-{
-    FLV_OTHER_TAG   = -1,
-    FLV_AUDIO_TAG   = 0x08,
-    FLV_VIDEO_TAG   = 0x09,
-    FLV_SCIRPT_TAG  = 0x12
-}FLVTagType;
-
-int flv_parse_file_header (FLVDemuxInfo* dmx);
-int flv_parse_tag_header (FLVDemuxInfo* dmx);
-int flv_parse_tag_script (FLVDemuxInfo* dmx);
-int flv_parse_tag_audio (FLVDemuxInfo* dmx);
-int flv_parse_tag_video (FLVDemuxInfo* dmx);
+BOOL flv_parse_tag_header (FLVTagPacket* pkt, UI8* data, UI32 size);
+BOOL flv_parse_tag_script (FLVTagPacket* pkt, TimestampInd* index, Metadata* mdata);
 
 #endif/*_FLV_PARSE_H_*/

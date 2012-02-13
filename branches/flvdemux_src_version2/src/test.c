@@ -1,3 +1,4 @@
+/*
 
 #include "flv_demux.h"
 #include "../mp_msg.h"
@@ -5,7 +6,7 @@
 
 int main()
 {
-/*
+/ *
     int ret;
     unsigned char data[2048];
     int size;
@@ -31,7 +32,7 @@ int main()
         printf("Audio_Codec : %d\n", meta->audiocodec);
         printf("Video_Codec : %d\n", meta->videocodec);
     }
-*/
+* /
     DemuxContext* ctx = (DemuxContext*)malloc(sizeof(DemuxContext));
     URLProtocol* h   = (URLProtocol*)malloc(sizeof(URLProtocol));
     Metadata* meta   = (Metadata*)malloc(sizeof(Metadata));
@@ -56,10 +57,10 @@ int main()
         printf ("Index Infors :\n");
         while (i < info->m_IndexList.count)
         {
-/*
+/ *
             printf ("\tIndex_%-5d : Times = %lld  \tPos = %lld\n", i, info->m_IndexList.elems[i].ts\
                 , info->m_IndexList.elems[i].pos);
-*/
+* /
             ++i;
         }
     }
@@ -76,12 +77,12 @@ int main()
         {
             break;
         }
-/*
+/ *
         printf ("AV = %d PTS = %-10lld DAT = %p SIZE = %-5d BUF = %-5d DATA = 0x%02X 0x%02X 0x%02X\n"\
             , pack->stream_index, pack->pts, pack->data, pack->size, pack->bufferlength\
             , (unsigned char)pack->data[0], (unsigned char)pack->data[1]\
             , (unsigned char)pack->data[2]);
-*/
+* /
     }
 
     ts = 3000;
@@ -89,16 +90,17 @@ int main()
     flv_demux_seek(ctx, ts);
 
 
-/*
+/ *
     free (pack->data);
     free (pack);
     free (meta);
     free (h);
     free (ctx);
-*/
+* /
 
 
 
     flv_demux_close(ctx);
     return 0;
 }
+*/
