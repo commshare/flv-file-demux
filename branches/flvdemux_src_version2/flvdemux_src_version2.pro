@@ -13,7 +13,6 @@ SOURCES += \
     urlprotocol.c \
     mp_msg.c \
     demux.c \
-    avformat.c \
     src/test.c \
     src/flv_parse.c \
     src/flv_demux.c \

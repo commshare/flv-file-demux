@@ -46,9 +46,10 @@ typedef struct PrereadTags
 /// @brief FLV demux info
 typedef struct FLVDemuxer
 {
+    UI64                m_FileSize;         ///< File Size(BYTE)
     UI32                m_AudioBitRate;     ///< Audio bitrate
     UI32                m_VideoBitRate;     ///< Video bitrate
-    UI64                m_FileDuration;     ///< File Duration
+    UI64                m_FileDuration;     ///< File Duration(SECOND)
     UI64                m_CurrentPosition;  ///< Current Demux Position
     FLVTagPacket        m_CurrentPacket;    ///< Current Tag Packet
     PrereadTags         m_PrereadTagList;   ///< Pre-read tag list

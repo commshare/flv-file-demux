@@ -8,6 +8,6 @@
 #include "flv_demux.h"
 
 BOOL flv_parse_tag_header (FLVTagPacket* pkt, UI8* data, UI32 size);
-BOOL flv_parse_tag_script (FLVTagPacket* pkt, TimestampInd* index, Metadata* mdata);
+BOOL flv_parse_tag_script (const FLVTagPacket* pkt, TimestampInd* index, Metadata* mdata);
 
 #endif/*_FLV_PARSE_H_*/

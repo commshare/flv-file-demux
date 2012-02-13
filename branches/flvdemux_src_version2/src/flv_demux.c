@@ -295,6 +295,7 @@ int       flv_demux_open (DemuxContext* ctx, URLProtocol* h)
         ctx->priv_data_size     = sizeof(FLVDemuxer);
         ctx->priv_data          = (void *)dmx;
 
+        dmx->m_FileSize         = (h ? h->url_seek(h, 0, SEEK_SIZE) : 0);
         dmx->m_AudioBitRate     = 0UL;
         dmx->m_VideoBitRate     = 0UL;
         dmx->m_FileDuration     = 0ULL;
@@ -307,7 +308,7 @@ int       flv_demux_open (DemuxContext* ctx, URLProtocol* h)
         strcpy(errstr, "Open Demux Success");
     }while(0);
 
-    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    mp_msg(0, errtyp, "DEMUX flv_demux_open ################ %s\n", errstr);
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
 int       flv_demux_probe (DemuxContext* ctx)
@@ -344,7 +345,7 @@ int       flv_demux_probe (DemuxContext* ctx)
         strcpy(errstr, "Probe File is available");
     }while(0);
 
-    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    mp_msg(0, errtyp, "DEMUX flv_demux_probe ################ %s\n", errstr);
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
 int       flv_demux_close (DemuxContext* ctx)
@@ -408,7 +409,7 @@ int       flv_demux_close (DemuxContext* ctx)
     strcpy(errstr, "Close Demux Success");
 
 FLV_DEMUX_CLOSE_ERROR:
-    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    mp_msg(0, errtyp, "DEMUX flv_demux_close ################ %s\n", errstr);
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
 int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
@@ -529,7 +530,7 @@ int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
                 strcpy(errstr, "Get Tag Packet Failed");
                 goto FLV_DEMUX_PARSE_METADATA_ERROR;
             }
-            else if (TRUE == readflag && dmx->m_CurrentPacket == 0UL)
+            else if (TRUE == readflag && dmx->m_CurrentPacket.m_TagDataSize == 0UL)
             {
                 errtyp = MSGL_V;
                 strcpy(errstr, "File End");
@@ -584,16 +585,26 @@ int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
     strcpy(errstr, "Parsing Metadata Successfully");
 FLV_DEMUX_PARSE_METADATA_ERROR:
     dmx->m_CurrentPosition = avoffset;
-    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
+    mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ %s\n", errstr);
     if (errtyp == MSGL_V)
     {
-        mp_msg(0, errtyp, "DEMUX ################ VIDEO_ID = %d\n", meta->videocodec);
-        mp_msg(0, errtyp, "DEMUX ################ AUDIO_ID = %d\n", meta->audiocodec);
-        mp_msg(0, errtyp, "DEMUX ################ V_SUB_ID = %d\n", meta->subvideocodec);
-        mp_msg(0, errtyp, "DEMUX ################ A_SUB_ID = %d\n", meta->subaudiocodec);
-        mp_msg(0, errtyp, "DEMUX ################ V_BITRAT = %d\n", meta->vbitrate);
-        mp_msg(0, errtyp, "DEMUX ################ A_BITRAT = %d\n", meta->abitrate);
-        mp_msg(0, errtyp, "DEMUX ################ DURATION = %d\n", meta->duation);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ VIDEO_ID = %d\n"\
+            , meta->videocodec);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ AUDIO_ID = %d\n"\
+            , meta->audiocodec);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ V_SUB_ID = %d\n"\
+            , meta->subvideocodec);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ A_SUB_ID = %d\n"\
+            , meta->subaudiocodec);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ V_BITRAT = %d\n"\
+            , meta->vbitrate);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ A_BITRAT = %d\n"\
+            , meta->abitrate);
+        mp_msg(0, errtyp, "DEMUX flv_demux_parse_metadata ################ DURATION = %d\n"\
+            , meta->duation);
+        dmx->m_FileDuration = meta->duation;
+        dmx->m_AudioBitRate = meta->abitrate;
+        dmx->m_VideoBitRate = meta->vbitrate;
     }
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
@@ -625,11 +636,11 @@ int       flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt)
             strcpy(errstr, "Get Tag Packet Failed");
             goto FLV_DEMUX_READ_PACKET_ERROR;
         }
-        else if (TRUE = readflag && dmx->m_CurrentPacket == 0UL)
+        else if (TRUE == readflag && dmx->m_CurrentPacket.m_TagDataSize == 0UL)
         {
             errtyp = MSGL_V;
             strcpy(errstr, "File End");
-            goto FLV_DEMUX_READ_PACKET_ERROR;
+            goto FLV_DEMUX_READ_PACKET_FILE_END;
         }
     }while(dmx->m_CurrentPacket.m_TagType != MDATA_FLV_STREAM_ID);
 
@@ -653,17 +664,119 @@ int       flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt)
     memcpy(pkt->data, dmx->m_CurrentPacket.m_TagData, pkt->size);
     goto FLV_DEMUX_READ_PACKET_OK;
 
-FLV_DEMUX_READ_PACKET_ERROR:
-    mp_msg(0, errtyp, "DEMUX ################ %s\n", errstr);
-    return (errtyp == MSGL_ERR ? -1 : 0);
-FLV_DEMUX_READ_PACKET_OK:
-    mp_msg(0, errtyp, "DEMUX ################ TYPE = %d PTS = %8lld SIZE = %8d LENS = %8d\n"\
+FLV_DEMUX_READ_PACKET_ERROR:    ///< Operation is Failed
+    mp_msg(0, errtyp, "DEMUX flv_demux_read_packet ################ %s\n", errstr);
+    return -1;
+FLV_DEMUX_READ_PACKET_OK:       ///< All Process is OK
+    mp_msg(0, errtyp, "DEMUX flv_demux_read_packet ################ TYPE = %d PTS = %8lld SIZE = %8d LENS = %8d\n"\
         , pkt->stream_index, pkt->pts, pkt->size, pkt->bufferlength);
     return pkt->size;
+FLV_DEMUX_READ_PACKET_FILE_END: ///< File End
+    mp_msg(0, errtyp, "DEMUX flv_demux_read_packet ################ %s\n", errstr);
+    return 0;
 }
 long long flv_demux_seek (DemuxContext* ctx, long long ts)
 {
+    FLVDemuxer*  dmx = NULL;
+    URLProtocol* pro = NULL;
+    I8  errstr[64];
+    UI8 errtyp = MSGL_V;
 
+    if (ctx == NULL || ((dmx = ctx->priv_data) == NULL) || (pro = dmx->m_URLProtocol == NULL))
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Parameters Error");
+        goto FLV_DEMUX_SEEK_ERROR;
+    }
+
+    if (1 == pro->url_is_live(pro))
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "This is a live stream, Cannot seek");
+        goto FLV_DEMUX_SEEK_ERROR;
+    }
+
+    mp_msg(0, MSGL_V, "DEMUX flv_demux_seek ################ CURR_POS = %lld\n"\
+        , dmx->m_CurrentPosition);
+
+    if (dmx->m_TimestampIndex.m_Count == 0UL || dmx->m_TimestampIndex.m_Index == NULL)
+    {
+        int  bitrate;   ///< BYTE per SECOND
+        UI64 testpos;   ///< Test Position
+        if (dmx->m_FileSize == 0x7FFFFFFFFFFFFFFF0ULL || dmx->m_FileSize == 0ULL\
+            || dmx->m_FileDuration == 0ULL)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "File Size or Duration Is Not Indicated, Cannot Seek");
+            goto FLV_DEMUX_SEEK_ERROR;
+        }
+
+        bitrate = dmx->m_FileSize / dmx->m_FileDuration;
+        testpos = bitrate * ts / 1000;
+
+        if (dmx->m_FileDuration - ts / 1000 <= 10 || dmx->m_FileSize - testpos <= 0x4000)
+        {
+            errtyp = MSGL_ERR;
+            strcpy(errstr, "Test Position is Close To File End");
+            goto FLV_DEMUX_SEEK_ERROR;
+        }
+
+
+        while (1)
+        {
+            BOOL validtag = FALSE;
+            BOOL getvideo = FALSE;
+            BOOL getaudio = FALSE;
+            UI64 keyframe = 0ULL;
+
+            if (pro->url_seek(pro, testpos, SEEK_SET) < 0)
+            {
+                errtyp = MSGL_ERR;
+                strcpy(errstr, "Calling url_seek Failed");
+                goto FLV_DEMUX_SEEK_ERROR;
+            }
+            dmx->m_CurrentPosition = testpos;
+
+            while (1)
+            {
+                if (validtag >= 5)
+            }
+        }
+    }
+    else
+    {
+        UI32 i = 0;
+        ts /= 1000;
+        while (i < dmx->m_TimestampIndex.m_Count)
+        {
+            if (dmx->m_TimestampIndex.m_Index[i] >= ts)
+            {
+                break;
+            }
+            ++i;
+        }
+
+        if (i == dmx->m_TimestampIndex.m_Count)
+        {
+            dmx->m_CurrentPosition = dmx->m_TimestampIndex.m_Index[i - 1].m_FilePos;
+        }
+        else
+        {
+            dmx->m_CurrentPosition = dmx->m_TimestampIndex.m_Index[i].m_FilePos;
+        }
+    }
+
+    errtyp = MSGL_V;
+    strcpy(errstr, "Seek Successful");
+    goto FLV_DEMUX_SEEK_OK;
+
+FLV_DEMUX_SEEK_ERROR :
+    mp_msg(0, errtyp, "DEMUX flv_demux_seek ################ %s", errstr);
+    return -1;
+FLV_DEMUX_SEEK_OK:
+    mp_msg(0, errtyp, "DEMUX flv_demux_seek ################ %s SEEK_POS = %lld"\
+        , errstr, dmx->m_CurrentPosition);
+    return dmx->m_CurrentPosition;
 }
 int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta)
 {
@@ -673,30 +786,6 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
 #if 0
 long long flv_demux_seek (DemuxContext* ctx, long long ts)
 {
-    FLVDemuxInfo* dmx   = NULL;
-    FLVIndex* index = NULL;
-    int count = 0;
-
-    /// Check parameters and check if this is a live stream
-    if (ctx == NULL || ctx->priv_data == NULL)
-    {
-        mp_msg(0, MSGL_V, "flv_demux_seek :: parameters error\n");
-        return -1;
-    }
-    dmx = (FLVDemuxInfo*)ctx->priv_data;
-#   ifndef _FLV_DEMUX_TEST_
-    if (dmx->m_URLProtocol->url_is_live != NULL\
-        && (1 == dmx->m_URLProtocol->url_is_live(dmx->m_URLProtocol)))
-    {
-        mp_msg(0, MSGL_V, "flv_demux_seek :: live stream cannot seek\n");
-        return -1;
-    }
-#   endif
-
-    mp_msg(0, MSGL_V, "flv_demux_seek :: current pos = %lld\n", dmx->m_CurrPos);
-
-    index = dmx->m_IndexList.elems;
-    count = dmx->m_IndexList.count;
     if (index == NULL || count == 0)
     {
         int biterate;/* = (int)(datasize / duration); / * bytes per millisecond * /*/
