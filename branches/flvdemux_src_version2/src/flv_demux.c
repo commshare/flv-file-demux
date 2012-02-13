@@ -724,10 +724,10 @@ long long flv_demux_seek (DemuxContext* ctx, long long ts)
 
         while (1)
         {
-            BOOL validtag = FALSE;
+            int  validtag = 0;
             BOOL getvideo = FALSE;
-            BOOL getaudio = FALSE;
-            UI64 keyframe = 0ULL;
+            BOOL avcvideo = FALSE;
+            I64  keyframe = -1;
 
             if (pro->url_seek(pro, testpos, SEEK_SET) < 0)
             {
@@ -739,7 +739,20 @@ long long flv_demux_seek (DemuxContext* ctx, long long ts)
 
             while (1)
             {
-                if (validtag >= 5)
+                if (validtag >= 5 && getvideo == TRUE)
+                {
+                    if (avcvideo == TRUE)
+                    {
+                        if (keyframe != -1)
+                        {
+                            dmx->m_CurrentPosition = keyframe;
+                        }
+                    }
+                    else
+                    {
+
+                    }
+                }
             }
         }
     }
