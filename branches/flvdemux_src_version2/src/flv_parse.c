@@ -73,8 +73,6 @@ BOOL flv_parse_tag_script (const FLVTagPacket* pkt, TimestampInd* index, Metadat
         return FALSE;
     }
 
-    
-
     data += 14;
     size -= 14;
 

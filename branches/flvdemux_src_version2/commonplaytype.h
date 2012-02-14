@@ -6,6 +6,6 @@ typedef enum
     /* ADTS Container format for AAC.  */
     DACF_ADIF                                   = 0x00000002,
     /* ADIF Container format for AAC. */
-    DACF_LATM                                   = 0x00000004,
+    DACF_LATM                                   = 0x00000004
     /* LATM Container format for AAC*/
 }       DFBAudioContainerFormat;

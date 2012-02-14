@@ -40,7 +40,7 @@ BOOL amf_parse_elem_name    (UI8** buf, UI32* size, UI8** data, UI16* lens)
         }
     }
     memcpy(*data, *buf, *lens);
-    *data[*lens] = (UI8)NULL;
+    (*data)[*lens] = (UI8)'\0';
 
     return TRUE;
 }

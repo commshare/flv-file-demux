@@ -339,37 +339,32 @@ typedef enum FLVTagType
 typedef struct Metadata{
     int fileformat;
     int videocodec;
-    int subvideocodec; ///for MPEG4, can be XVID/DIVX...
+    int subvideocodec;      ///< for MPEG4, can be XVID/DIVX...
     int audiocodec;
-    int subaudiocodec; ///< for AAC, can be ADTS/ADIF...
-    int duation;   ///< milliseconds
-    int vbitrate;  ///< bits persecond
-    int abitrate;  ///< bits per second
-    int streams;   ///< how many streams in the media
-    int videostreamindex;  ///< the main video stream index
-    int audiostreamindex;  ///< the main audio stream index
+    int subaudiocodec;      ///< for AAC, can be ADTS/ADIF...
+    int duation;            ///< milliseconds
+    int vbitrate;           ///< bits persecond
+    int abitrate;           ///< bits per second
+    int streams;            ///< how many streams in the media
+    int videostreamindex;   ///< the main video stream index
+    int audiostreamindex;   ///< the main audio stream index
 }Metadata;
 
 typedef struct AVPacket {
-    long long pts;                            ///< presentation time stamp in time_base units
-    long long dts;                            ///< decompression time stamp in time_base units
+    long long pts;          ///< presentation time stamp in time_base units
+    long long dts;          ///< decompression time stamp in time_base units
     unsigned char *data;
     int bufferlength;       ///< the memory(pointer by data) region size
-    int   size;             ///< how many bytes in data, <= bufferlength
-    int   stream_index;     ///<  video or audio index
-    int   duration;                         ///< presentation duration in time_base units (0 if not available)
-    int  isUsed;              /// 1 - This structure is using
-    int  iSendDsiSend;                /// If need sending DSI data
+    int size;               ///< how many bytes in data, <= bufferlength
+    int stream_index;       ///<  video or audio index
+    int duration;           ///< presentation duration in time_base units (0 if not available)
+    int isUsed;             /// 1 - This structure is using
+    int iSendDsiSend;       /// If need sending DSI data
 } AVPacket;
 
 typedef struct AVPacketList{
     AVPacket packet;
     struct AVPacketList * next;
 }AVPacketList;
-
-/*
- * ext ".flv", ".mp4", ...
- */
-int fileExtensionToFileFormatId(const char * ext);
 
 #endif // __AVFORMAT_H_

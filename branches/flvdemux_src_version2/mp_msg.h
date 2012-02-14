@@ -1,44 +1,39 @@
-
 #ifndef MP_MSG_H
 #define MP_MSG_H
 
-// verbosity level(defined in mp_msg):
 extern int  g_verbose;
 
-/* Only messages level MSGL_FATAL-MSGL_STATUS should be translated,
- * messages level MSGL_V and above should not be translated. */
+#define MSGL_FATAL   0  // will exit/abort
+#define MSGL_ERR     1  // continues
+#define MSGL_WARN    2  // only warning
+#define MSGL_HINT    3  // short help message
+#define MSGL_INFO    4  // -quiet
+#define MSGL_STATUS  5  // v=0
+#define MSGL_V       6  // v=1
+#define MSGL_DBG2    7  // v=2
+#define MSGL_DBG3    8  // v=3
+#define MSGL_DBG4    9  // v=4
+#define MSGL_DBG5    10 // v=5
 
-#define MSGL_FATAL 0  // will exit/abort
-#define MSGL_ERR 1    // continues
-#define MSGL_WARN 2   // only warning
-#define MSGL_HINT 3   // short help message
-#define MSGL_INFO 4   // -quiet
-#define MSGL_STATUS 5 // v=0
-#define MSGL_V 6      // v=1
-#define MSGL_DBG2 7   // v=2
-#define MSGL_DBG3 8   // v=3
-#define MSGL_DBG4 9   // v=4
-#define MSGL_DBG5 10  // v=5
-
-#define MSGL_FIXME 1  // for conversions from printf where the appropriate MSGL is not known; set equal to ERR for obtrusiveness
-#define MSGT_FIXME 0  // for conversions from printf where the appropriate MSGT is not known; set equal to GLOBAL for obtrusiveness
+#define MSGL_FIXME   1  // for conversions from printf where the appropriate MSGL is not known; set equal to ERR for obtrusiveness
+#define MSGT_FIXME   0  // for conversions from printf where the appropriate MSGT is not known; set equal to GLOBAL for obtrusiveness
 
 // code/module:
 
-#define MSGT_GLOBAL 0        // common player stuff errors
+#define MSGT_GLOBAL  0        // common player stuff errors
 #define MSGT_CPLAYER 1       // console player (mplayer.c)
 #define MSGT_GPLAYER 2       // gui player
 
-#define MSGT_VO 3        // libvo
-#define MSGT_AO 4        // libao
+#define MSGT_VO      3        // libvo
+#define MSGT_AO      4        // libao
 
-#define MSGT_DEMUXER 5    // demuxer.c (general stuff)
-#define MSGT_DS 6         // demux stream (add/read packet etc)
-#define MSGT_DEMUX 7      // fileformat-specific stuff (demux_*.c)
-#define MSGT_HEADER 8     // fileformat-specific header (*header.c)
+#define MSGT_DEMUXER    5    // demuxer.c (general stuff)
+#define MSGT_DS         6         // demux stream (add/read packet etc)
+#define MSGT_DEMUX      7      // fileformat-specific stuff (demux_*.c)
+#define MSGT_HEADER     8     // fileformat-specific header (*header.c)
 
-#define MSGT_AVSYNC 9     // mplayer.c timer stuff
-#define MSGT_AUTOQ 10     // mplayer.c auto-quality stuff
+#define MSGT_AVSYNC     9     // mplayer.c timer stuff
+#define MSGT_AUTOQ      10     // mplayer.c auto-quality stuff
 
 #define MSGT_CFGPARSER 11 // cfgparser.c
 
@@ -103,18 +98,12 @@ extern int  g_verbose;
 
 #define MSGT_STATUSLINE 45 // playback/encoding status line
 
-#define MSGT_MAX 64
+#define MSGT_MAX    64
+#define MSGSIZE_MAX 500
 
-//Check -msglevel <all=<level>:<module>=<level>...> from command line to get verbose level.
-void mp_msg_init(int argc, char** argv);
-// mod is unused.
-int mp_msg_test(int mod, int lev);
+#include <stdio.h>
+#include <stddef.h>
+#include <stdarg.h>
 
-//mod is unused.
-#ifdef __GNUC__
-void mp_msg(int mod, int lev, const char* format, ...) __attribute__((format(printf, 3, 4)));
-#else // not GNU C
 void mp_msg(int mod, int lev, const char* format, ...);
-#endif
-
 #endif
