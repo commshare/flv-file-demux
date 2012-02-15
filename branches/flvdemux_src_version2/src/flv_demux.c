@@ -7,16 +7,12 @@
 #include "flv_parse.h"
 #include "amf_parse.h"
 
-/// @brief  Indicate if demux module need force close
-static int           need_force_close = 0;
 /// @brief  Check if file of this type can handle
 static int           can_handle(int fileformat);
 /// @brief  Create demux context
 static DemuxContext* create_demux_context();
 /// @brief  Destroy demux context
 static void          destroy_demux_context(DemuxContext * ctx);
-/// @brief  Set the force close flag
-extern void          flv_demux_force_close ();
 /// @brief  Get a tag packet and set it into dmx
 static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx);
 /// @brief  Add a pre-read tag packet
@@ -91,13 +87,6 @@ static void          destroy_demux_context(DemuxContext * ctx)
 
     /// @note destroy DemuxContext only, it's private data should be cleared in flv_demux_close
     free(ctx);
-}
-extern void          flv_demux_force_close ()
-{
-    if (need_force_close != 0)
-    {
-        need_force_close = 1;
-    }
 }
 static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx)
 {
@@ -879,369 +868,182 @@ FLV_DEMUX_SEEK_OK:
 }
 int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta)
 {
-    return 0;
-}
+    UI8  errtyp = MSGL_V;
+    I8   errstr[64];
+    FLVTagPacket* pkt  = NULL;
+    UI8  amf_data_type = 0;
+    I8*  elemname = NULL;
+    UI16 elemlens = 0UL;
 
-#if 0
-long long flv_demux_seek (DemuxContext* ctx, long long ts)
-{
-    if (index == NULL || count == 0)
+    /// Check Parameters
+    if ((data == NULL) || (meta == NULL))
     {
-        int biterate;/* = (int)(datasize / duration); / * bytes per millisecond * /*/
-        long long testpos;/* = (int)(rate * ts + dmx->m_AVDataOffset);*/
-        unsigned char* data = dmx->m_InputInfor.data;
-
-        if (dmx->m_Duration - ts <= 10000)
-        {
-            mp_msg(0, MSGL_V, "flv_demux_seek :: close to file end cannot seek\n");
-            return -1;
-        }
-        biterate = (int)((dmx->m_FileSize - dmx->m_AVDataOffset) / dmx->m_Duration);
-        testpos  = biterate * ts + dmx->m_AVDataOffset;
-        if (testpos >= dmx->m_FileSize)
-        {
-            mp_msg(0, MSGL_V, "flv_demux_seek :: close to file end cannot seek\n");
-            return -1;
-        }
-        mp_msg(0, MSGL_V, "flv_demux_seek :: test  start = %lld\n", testpos);
-
-        while (1)
-        {
-            int validtags  = 0;
-            int havevideo  = 0;
-            int haveavcdat = 0;
-            long long keyfrmpos  = -1;
-
-#           ifndef _FLV_DEMUX_TEST_
-            if (dmx->m_URLProtocol->url_seek(dmx->m_URLProtocol, testpos, SEEK_SET) < 0)
-            {
-                mp_msg(0, MSGL_V, "flv_demux_seek :: url_seek :: failed\n");
-                return -1;
-            }
-#           endif
-            dmx->m_CurrPos = testpos;
-
-            while (1)
-            {
-                /// circle exit condition :
-                /// Test 5 tags success and tested 1 video tag at least
-                /// if the video format is AVC,tested 1 key frame tag at least and mark the position
-
-                /// read and test a tag header
-                if (read_file_data(dmx, dmx->m_CurrPos, FLV_TAGS_HEADER_SIZE) <= 0)
-                {
-                    mp_msg(0, MSGL_V, "flv_demux_seek :: read_file_data :: failed\n");
-                    return -1;
-                }
-                if (flv_parse_tag_header(dmx) < 0 || dmx->m_DemuxState == FLV_DEMUX_MDATA)
-                {
-                    break;
-                }
-                if (dmx->m_CurrPos + dmx->m_TagDataSize > dmx->m_FileSize)
-                {
-                    break;
-                }
-                if (dmx->m_DemuxState == FLV_DEMUX_VIDEO)
-                {
-                    havevideo = 1;
-                    if (read_file_data(dmx, dmx->m_CurrPos + FLV_TAGS_HEADER_SIZE, 1) <= 0)
-                    {
-                        mp_msg(0, MSGL_V, "flv_demux_seek :: read_file_data :: failed\n");
-                        return -1;
-                    }
-                    if ((data[0] & 0x0F) == 7)
-                    {
-                        haveavcdat = 1;
-                        if (((data[0] >> 4) & 0x0F) == 1)
-                        {
-                            keyfrmpos = dmx->m_CurrPos;
-                        }
-                    }
-                }
-                dmx->m_CurrPos += (FLV_TAGS_HEADER_SIZE + dmx->m_TagDataSize + FLV_TAGS_TAILER_SIZE);
-                /// skip a tag
-#               ifndef _FLV_DEMUX_TEST_
-                dmx->m_URLProtocol->url_seek(dmx->m_URLProtocol, dmx->m_CurrPos, SEEK_SET);
-#               endif
-                ++validtags;
-            }
-            ++testpos;
-        }
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Data Lack");
+        goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR;
     }
-    else
+    if (size < 1024)
     {
-        int i = 0;
-        ts /= 1000;
-        while (i < count)
-        {
-            if (ts <= dmx->m_IndexList.elems[i].ts)
-            {
-                break;
-            }
-            ++i;
-        }
-
-        if (i == count)
-        {
-            dmx->m_CurrPos = dmx->m_IndexList.elems[i - 1].pos;
-        }
-        else
-        {
-            dmx->m_CurrPos = dmx->m_IndexList.elems[i].pos;
-        }
-        mp_msg(0, MSGL_V, "flv_demux_seek :: seeked_to_pos = %lld\n", dmx->m_CurrPos);
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Data Lack");
+        goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
     }
-
-#   ifndef _FLV_DEMUX_TEST_
-    if (dmx->m_URLProtocol->url_seek(dmx->m_URLProtocol, dmx->m_CurrPos, SEEK_SET) < 0)
+    if (data[0] != 'F' || data[1] != 'L' || data[2] != 'V' || data[13] != 0x12)
     {
-        mp_msg(0, MSGL_V, "flv_demux_seek :: url_seek :: failed\n");
-        return -1;
-    }
-#   endif
-    mp_msg(0, MSGL_V, "flv_demux_seek :: OK\n");
-    return dmx->m_CurrPos;
-}
-int flv_demux_parse_codec_from_raw_data(unsigned char data[], int size, Metadata* meta)
-{
-    int tag_data_size;
-    int got_audio_codec = 0;
-    int got_video_codec = 0;
-
-    if (size < FLV_FILE_HEADER_SIZE + FLV_TAGS_HEADER_SIZE)
-    {
-        return FLV_FILE_HEADER_SIZE + FLV_TAGS_HEADER_SIZE;
-    }
-    if (data[0] != 'F' || data[1] != 'L' || data[2] != 'V')
-    {
-        return -1;
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Data Error");
+        goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR;
     }
     data += FLV_FILE_HEADER_SIZE;
     size -= FLV_FILE_HEADER_SIZE;
 
-    if (data[0] != 0x12)
+    /// Check Meta Data Tag Header
+    pkt = (FLVTagPacket*)malloc(sizeof(FLVTagPacket));
+    if (pkt == NULL)
     {
-        return -1;
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Allocate Temp Packet Failed");
+        goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR;
     }
-
-    tag_data_size = get_ui24(data + 1, size - 1);
-
+    memset(pkt, 0, sizeof(FLVTagPacket));
+    if (flv_parse_tag_header (pkt, data, FLV_TAGS_HEADER_SIZE) == FALSE)
+    {
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Parse Tag Header Failed");
+        goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR;
+    }
     data += FLV_TAGS_HEADER_SIZE;
-    size -= FLV_TAGS_HEADER_SIZE;
+    size -= FVL_TAGS_HEADER_SIZE;
 
-    if (data[0] != 0x02)
+    /// Parse Raw Data
+    if ((data[0] != 0x02) || (data[1] != 0x00) || (data[2] != 0x0A)\
+        || (memcmp(&data[3], "onMetaData") != 0) || (data[13] != 0x03 && data[13] != 0x08))
     {
-        return -1;
+        errtyp = MSGL_ERR;
+        strcpy(errstr, "Data Error");
+        goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR;
     }
-    if (10 != get_ui16(&data[1], size - 1))
+    if (data[13] == 0x03)
     {
-        return -1;
+        data += 1;
     }
-    if (memcmp(&data[3], "onMetaData", 10) != 0)
+    else
     {
-        return -1;
-    }
-    data += 13;
-    size -= 13;
-
-    /* The next element type must be 0x08 */
-    if (data[0] != 0x08)
-    {
-        return -1;
+        data += 5;
     }
 
-    data += 5;
-    size -= 5;
-
-    while (size > 0 && (got_audio_codec == 0 || got_video_codec == 0)\
-        && (data[0] != 0x00 || data[1] != 0x00 || data[2] != 0x09))
+    meta->audiocodec = -1;
+    meta->videocodec = -1;
+    errtyp = MSGL_ERR;
+    strcpy(errstr, "Data Lack");
+    while (meta->audiocodec == -1 || meta->videocodec == -1)
     {
-        int flag = 0;
-        int data_type = 0;
-
-        do
+        if (FALSE == amf_parse_elem_name (&data, &size, &elemname, &elemlens))
         {
-            unsigned short namelens;
-            unsigned char elemname[128];
-            /* 2 bytes of element length */
-            if (size < 2)
+            goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+        }
+        if (FALSE == get_Byte(&data, &size, &amf_data_type))
+        {
+            goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+        }
+        switch((FLVTagType)amf_data_type)
+        {
+        case NUMBER_MARKER      :
+        {
+            UI64 val = 0ULL;
+            if (amf_parse_number(&data, &size, val) == FALSE)
             {
-                flag = -1;
-                break;
+                goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }
-            namelens = get_ui16(data, size);
-            data += 2;
-            size -= 2;
-
-            /* namelens bytes of element name */
-            if (size < namelens)
+            if (0 == strcmp((char*)elemname, "audiocodecid"))
             {
-                flag = -1;
-                break;
-            }
-            memcpy(elemname, data, namelens);
-            elemname[namelens] = 0;
-            data += namelens;
-            size -= namelens;
-
-            /* 1 byte of data type */
-            if (size < 1)
-            {
-                flag = -1;
-                break;
-            }
-            data_type = data[0];
-
-            /* other type data  */
-            if (data_type != 0x00)
-            {
-                /* boolean */
-                if (data_type == 0x01)
-                {
-                    if (size < 2)
-                    {
-                        flag = -1;
-                    }
-                    else
-                    {
-                        data += 2;
-                        size -= 2;
-                    }
-                }
-                /* string */
-                else if (data_type == 0x02)
-                {
-                    if (size < 3)
-                    {
-                        flag = -1;
-                    }
-                    else
-                    {
-                        int len = 0;
-                        data += 1;
-                        size -= 1;
-                        len = get_ui16(data, size);
-                        data += 2;
-                        size -= 2;
-                        if (size < len)
-                        {
-                            flag = -1;
-                        }
-                        else
-                        {
-                            data += len;
-                            size -= len;
-                        }
-                    }
-                }
-                /* null */
-                else if (data_type == 0x05)
-                {
-                    data += 1;
-                    size -= 1;
-                }
-                /* data */
-                else if (data_type == 0x0B)
-                {
-                    if (size < 11)
-                    {
-                        flag = -1;
-                    }
-                    else
-                    {
-                        data += 11;
-                        size -= 11;
-                    }
-                }
-                /* long string */
-                else if (data_type == 0x0C)
-                {
-                    if (size < 5)
-                    {
-                        flag = -1;
-                    }
-                    else
-                    {
-                        int len = 0;
-                        data += 1;
-                        size -= 1;
-                        len = get_ui32(data, size);
-                        data += 4;
-                        size -= 4;
-                        if (size < len)
-                        {
-                            flag = -1;
-                        }
-                        else
-                        {
-                            data += len;
-                            size -= len;
-                        }
-                    }
-                }
-                /* need all tag data */
-                else
-                {
-                    flag = -1;
-                }
-                break;
-            }
-
-            /* double data */
-            if (size < 9)
-            {
-                flag = -1;
-                break;
-            }
-            data += 1;
-            size -= 1;
-            if (strcmp("videocodecid", (const char*)elemname) == 0)
-            {
-                meta->videocodec = (int)get_fl64(data, size);
-                switch(meta->videocodec)
-                {
-                case 2:///< H.263
-                    meta->videocodec = CODEC_ID_H263;
-                    break;
-                case 7:///< AVC
-                    meta->videocodec = CODEC_ID_H264;
-                    break;
-                default:
-                    meta->videocodec = CODEC_ID_NONE;
-                }
-                got_video_codec = 1;
-            }
-            else if(strcmp("audiocodecid", (const char*)elemname) == 0)
-            {
-                meta->audiocodec = (int)get_fl64(data, size);
-                switch(meta->audiocodec)
+                switch(val)
                 {
                 case 2: ///< mp3
                 case 14:///< mp3
-                    meta->audiocodec = CODEC_ID_MP3;
+                    mdata->audiocodec = CODEC_ID_MP3;
                     break;
                 case 10:///< aac
-                    meta->audiocodec = CODEC_ID_AAC;
+                    mdata->audiocodec = CODEC_ID_AAC;
                     break;
                 default:
-                    meta->audiocodec = CODEC_ID_NONE;
+                    mdata->audiocodec = CODEC_ID_NONE;
+                    break;
                 }
-                got_audio_codec = 1;
             }
-            data += 8;
-            size -= 8;
-        } while (0);
-        if (flag != 0)
+            else if (0 == strcmp((char*)elemname, "videocodecid"))
+            {
+                switch(val)
+                {
+                case 2:///< H.263
+                    mdata->videocodec = CODEC_ID_H263;
+                    break;
+                case 7:///< AVC
+                    mdata->videocodec = CODEC_ID_H264;
+                    break;
+                default:
+                    mdata->videocodec = CODEC_ID_NONE;
+                    break;
+                }
+            }
+            break;
+        }
+        case BOOLEAN_MARKER     :
+        {
+            if (get_Byte(&data, &size, NULL) == FALSE)
+            {
+                goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+            }
+            break;
+        }
+        case STRING_MARKER      :
+        {
+            UI16 len = 0U;
+            if ((get_UI16(&data, &size, &len) == FALSE) || (size < len))
+            {
+                goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+            }
+            data += len;
+            size -= len;
+            break;
+        }
+        case NULL_MARKER        :
+        case UNDEFINED_MARKER   :
         {
             break;
         }
-    }
-
-    if (got_audio_codec != 1 || got_video_codec != 1)
-    {
-        return tag_data_size + FLV_FILE_HEADER_SIZE + FLV_TAGS_HEADER_SIZE;
+        case DATE_MARKER        :
+        {
+            if (size < 10)
+            {
+                goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+            }
+            data += 10;
+            size -= 10;
+            break;
+        }
+        case LONG_STRING_MARKER :
+        {
+            UI32 len = 0U;
+            if ((get_UI32(&data, &size, &len) == FALSE) || (size < len))
+            {
+                goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+            }
+            data += len;
+            size -= len;
+            break;
+        }
+        default:
+            goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
+        }
     }
 
     return 0;
+
+FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR:
+    mp_msg(0, errtyp, "DEMUX ################ flv_demux_parse_codec_from_raw_data : %s\n", errstr);
+    return -1;
+FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK:
+    mp_msg(0, errtyp, "DEMUX ################ flv_demux_parse_codec_from_raw_data : %s\n", errstr);
+    return pkt->m_TagDataSize;
 }
-#endif

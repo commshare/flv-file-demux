@@ -23,7 +23,7 @@ typedef enum AMFType
     ECMA_ARRAY_MARKER   = 0x08,
     OBJECT_END_MARKER   = 0x09, ///< This program will skip this AMF data
     STRICT_ARRAY_MARKER = 0x0A,
-    DATA_MARKER         = 0x0B, ///< This program will skip this AMF data
+    DATE_MARKER         = 0x0B, ///< This program will skip this AMF data
     LONG_STRING_MARKER  = 0x0C, ///< This program will skip this AMF data
     UNSUPPORTED_MARKER  = 0x0D, ///< This program does not supported this AMF data type
     RECORDSET_MARKER    = 0x0E, ///< reserved, AMF_0 protocol does not supported

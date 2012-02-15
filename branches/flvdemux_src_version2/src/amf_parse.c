@@ -211,7 +211,7 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
             }
             break;
         }
-        case DATA_MARKER        :   ///< 0x0B DATA_MARKER, Skip it
+        case DATE_MARKER        :   ///< 0x0B DATA_MARKER, Skip it
         {
             if (*size < 10)
             {
@@ -429,7 +429,7 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
             }
             break;
         }
-        case DATA_MARKER        :   ///< 0x0B DATA_MARKER, Skip it
+        case DATE_MARKER        :   ///< 0x0B DATA_MARKER, Skip it
         {
             if (*size < 10)
             {
