@@ -26,7 +26,7 @@ BOOL amf_parse_elem_name    (UI8** buf, UI32* size, UI8** data, UI16* lens)
     {
         return FALSE;
     }
-    if (_len < *lens)
+    if (_len < (*lens + 1))
     {
         if (*data != NULL)
         {
@@ -42,6 +42,9 @@ BOOL amf_parse_elem_name    (UI8** buf, UI32* size, UI8** data, UI16* lens)
     memcpy(*data, *buf, *lens);
     (*data)[*lens] = (UI8)'\0';
 
+    (*buf)  += (*lens);
+    (*size) -= (*lens);
+    (*lens) += 1;
     return TRUE;
 }
 BOOL amf_parse_number       (UI8** buf, UI32* size, UI64* data)
@@ -63,12 +66,16 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
     UI8* elemname   = NULL; ///< object element name string
     UI8  amf_data_type;      ///< AMF tag type
 
-    while ((*size >= 3) && (*buf[0] != 0x00 || *buf[1] != 0x00 || *buf[2] != 0x09))
+    mp_msg (0, MSGL_V, "In 0x03 OBJECT\n");fflush(stdout);
+
+    while (((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x09))\
+        && ((*size) >= 3))
     {
         if (amf_parse_elem_name(buf, size, &elemname, &elemlens))
         {
             return FALSE;
         }
+        mp_msg (0, MSGL_V, "\tELEMNAME : %s\n", elemname);fflush(stdout);
         if (get_Byte (buf, size, &amf_data_type))
         {
             return FALSE;
@@ -154,7 +161,7 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
                 return FALSE;
             }
             *buf  += lens;
-            *size += lens;
+            *size -= lens;
             break;
         }
         case OBJECT_MARKER      :   ///< 0x03 OBJECT_MARKER, Parse it
@@ -194,6 +201,10 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
             {
                 flag = elemname;
             }
+            else
+            {
+                return FALSE;
+            }
             if (amf_parse_strict_array (buf, size, index, flag) == FALSE)
             {
                 return FALSE;
@@ -225,7 +236,7 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
                 return FALSE;
             }
             *buf  += lens;
-            *size += lens;
+            *size -= lens;
             break;
         }
         default:
@@ -240,14 +251,16 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
         elemlens = 0U;
     }
 
-    if ((*size >= 3) && (*buf[0] != 0x00 || *buf[1] != 0x00 || *buf[2] != 0x09))
+    if (((*size) >= 3) && (*(*buf + 0) == 0x00 || *(*buf + 1) == 0x00 || *(*buf + 2) == 0x09))
     {
+        mp_msg (0, MSGL_V, "FIND OBJECT END MARKER\n");fflush(stdout);
         *buf  += 3;
         *size -= 3;
         return TRUE;
     }
     else
     {
+        mp_msg (0, MSGL_V, "CANNOT FIND OBJECT END MARKER\n");fflush(stdout);
         return FALSE;
     }
 }
@@ -255,20 +268,32 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
 {
     UI16 elemlens   = 0UL;  ///< object element name length
     UI8* elemname   = NULL; ///< object element name string
-    UI8  amf_data_type;      ///< AMF tag type
+    UI8  amf_data_type;     ///< AMF tag type
     UI32 elemcount  = 0UL;  ///< Element count
+    UI32 elemcount_copy = 0UL;
+
+    int i = 1;
 
     if (get_UI32(buf, size, &elemcount) == FALSE)
     {
         return FALSE;
     }
 
-    while ((*size >= 3) && (*buf[0] != 0x00 || *buf[1] != 0x00 || *buf[2] != 0x09))
+    mp_msg (0, MSGL_V, "In 0x08 ECMA_ARRAY\n");fflush(stdout);
+
+    while ((((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x09))\
+        && ((*size) >= 3))\
+        || (elemcount_copy < elemcount))
+        
     {
         if (amf_parse_elem_name(buf, size, &elemname, &elemlens))
         {
             return FALSE;
         }
+
+        mp_msg (0, MSGL_V, "\tELEMNAME : %2d : %s\n", i, elemname);fflush(stdout);
+        ++i;
+
         if (get_Byte (buf, size, &amf_data_type))
         {
             return FALSE;
@@ -354,7 +379,7 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
                 return FALSE;
             }
             *buf  += lens;
-            *size += lens;
+            *size -= lens;
             break;
         }
         case OBJECT_MARKER      :   ///< 0x03 OBJECT_MARKER, Parse it
@@ -394,6 +419,10 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
             {
                 flag = elemname;
             }
+            else
+            {
+                return FALSE;
+            }
             if (amf_parse_strict_array (buf, size, index, flag) == FALSE)
             {
                 return FALSE;
@@ -425,12 +454,13 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
                 return FALSE;
             }
             *buf  += lens;
-            *size += lens;
+            *size -= lens;
             break;
         }
         default:
             return FALSE;
         }
+        ++elemcount_copy;
     }
 
     if (elemname != NULL)
@@ -440,22 +470,43 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
         elemlens = 0U;
     }
 
-    if ((*size >= 3) && (*buf[0] != 0x00 || *buf[1] != 0x00 || *buf[2] != 0x09))
+    if (elemcount == 0)
     {
-        *buf  += 3;
-        *size -= 3;
-        return TRUE;
+        if (((*size) >= 3)\
+            && ((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x00)))
+        {
+            mp_msg (0, MSGL_V, "FIND ECMA_ARRAY END MARKER\n");
+            *buf  += 3;
+            *size -= 3;
+            return TRUE;
+        }
+        else
+        {
+            mp_msg (0, MSGL_V, "CANNOT FIND ECMA_ARRAY END MARKER\n");
+            return FALSE;
+        }
     }
     else
     {
-        return FALSE;
+        if ((elemcount == elemcount_copy)\
+            && ((*size) >= 3)\
+            && ((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x00)))
+        {
+            mp_msg (0, MSGL_V, "FIND ECMA_ARRAY END MARKER\n");fflush(stdout);
+            *buf  += 3;
+            *size -= 3;
+            return TRUE;
+        }
+        mp_msg (0, MSGL_V, "NO ECMA_ARRAY END MARKER\n");fflush(stdout);
+        return TRUE;
     }
+    return TRUE;
 }
 BOOL amf_parse_strict_array (UI8** buf, UI32* size, TimestampInd* index, UI8* flag)
 {
     UI32 elemcount;
     UI8  amf_data_type;
-    if (index == NULL || get_UI32(buf, size, &elemcount) == FALSE)
+    if ((index == NULL) || (get_UI32(buf, size, &elemcount) == FALSE))
     {
         return FALSE;
     }
@@ -465,27 +516,7 @@ BOOL amf_parse_strict_array (UI8** buf, UI32* size, TimestampInd* index, UI8* fl
         return TRUE;
     }
 
-    if (flag == NULL)
-    {
-        UI32 i = 0;
-        while (i < elemcount)
-        {
-            if (get_Byte(buf, size, &amf_data_type) == FALSE)
-            {
-                return FALSE;
-            }
-            if (amf_data_type != (UI8)NUMBER_MARKER)
-            {
-                return FALSE;
-            }
-            if (get_UI64 (buf, size, NULL) == FALSE)
-            {
-                return FALSE;
-            }
-            ++i;
-        }
-    }
-    else if (0 == strcmp((char*)flag, "filepositions"))
+    if (0 == strcmp((char*)flag, "filepositions"))
     {
         UI32 i = 0;
         if (index->m_Index != NULL && index->m_Count != elemcount)
@@ -502,7 +533,7 @@ BOOL amf_parse_strict_array (UI8** buf, UI32* size, TimestampInd* index, UI8* fl
             }
         }
 
-        while (i > 0)
+        while (i < elemcount)
         {
             if (get_Byte(buf, size, &amf_data_type) == FALSE)
             {
@@ -512,7 +543,7 @@ BOOL amf_parse_strict_array (UI8** buf, UI32* size, TimestampInd* index, UI8* fl
             {
                 return FALSE;
             }
-            if (amf_parse_number(buf, size, &(index->m_Index[i].m_TimePos)) == FALSE)
+            if (amf_parse_number(buf, size, &(index->m_Index[i].m_FilePos)) == FALSE)
             {
                 return FALSE;
             }
@@ -536,7 +567,7 @@ BOOL amf_parse_strict_array (UI8** buf, UI32* size, TimestampInd* index, UI8* fl
             }
         }
 
-        while (i > 0)
+        while (i < elemcount)
         {
             if (get_Byte(buf, size, &amf_data_type) == FALSE)
             {

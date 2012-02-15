@@ -68,7 +68,7 @@ BOOL flv_parse_tag_script (const FLVTagPacket* pkt, TimestampInd* index, Metadat
     mdata->fileformat = FILEFORMAT_ID_FLV;
 
     if (data[0] != 0x02 || data[1] != 0x00 || data[2] != 0x0A\
-        || memcmp(&data[3], "onMetadata", 10) != 0 || (data[13] != 0x03 && data[13] != 0x08))
+        || memcmp(&data[3], "onMetaData", 10) != 0 || (data[13] != 0x03 && data[13] != 0x08))
     {
         return FALSE;
     }

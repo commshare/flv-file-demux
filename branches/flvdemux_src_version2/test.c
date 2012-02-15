@@ -117,13 +117,23 @@ int main()
         {
             break;
         }
-        while (flv_demux_read_packet(c, pack))
+        while (flv_demux_read_packet(c, pack) > 0);
+        if (flv_demux_seek(c, 24000) < 0)
         {
             break;
         }
-        flv_demux_close(c);
-        break;
+        if (flv_demux_read_packet(c, pack) < 0)
+        {
+            break;
+        }
+        if (flv_demux_close(c) < 0)
+        {
+            break;
+        }
     }while (0);
 
+
+    printf ("DEMUX ################ test_routine Test Completely\n");
+    fgetc(stdin);
     return 0;
 }

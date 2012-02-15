@@ -23,8 +23,8 @@ BOOL get_Byte (UI8** buf, UI32 *size, UI8 * data)
         *data = **buf;
     }
 
-    *buf  += 2;
-    *size -= 2;
+    *buf  += 1;
+    *size -= 1;
     return TRUE;
 }
 BOOL get_UI16 (UI8** buf, UI32* size, UI16* data)
