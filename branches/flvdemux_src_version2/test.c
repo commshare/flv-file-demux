@@ -134,6 +134,6 @@ int main()
 
 
     printf ("DEMUX ################ test_routine Test Completely\n");
-    fgetc(stdin);
+    //fgetc(stdin);
     return 0;
 }
