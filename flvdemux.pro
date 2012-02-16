@@ -1,11 +1,5 @@
 DEFINES += _FLV_DEMUX_TEST_
 
-INCLUDEPATH += C:\QtCreator\mingw\mingw32\include
-
-LIBPATH += C:\QtCreator\mingw\mingw32\lib
-
-LIBS += -lpthread
-
 HEADERS += \
     src/flv_parse.h \
     src/flv_demux.h \

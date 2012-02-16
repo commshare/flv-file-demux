@@ -418,6 +418,12 @@ int flv_demux_close (DemuxContext* ctx)
         free (dmx->m_CurrentPacket.m_TagData);
         dmx->m_CurrentPacket.m_TagData = NULL;
     }
+    free(dmx);
+    dmx = ctx->priv_data = NULL;
+
+#ifndef _FLV_DEMUX_TEST_
+    destroy_demux_context(ctx);
+#endif
 
     errtyp = MSGL_V;
     strcpy(errstr, "Close Demux Success");
