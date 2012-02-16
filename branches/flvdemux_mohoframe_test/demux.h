@@ -2,7 +2,9 @@
 #define _DEMUX_H_
 #include "urlprotocol.h"
 #include "avformat.h"
+/*
 #include <pthread.h>
+*/
 
 typedef struct DemuxContext {
     /*
@@ -121,7 +123,9 @@ typedef struct DemuxContextHelper {
     /*
      * the instance list mutex
      */
+/*
     pthread_mutex_t instance_list_mutex;
+*/
 }DemuxContextHelper;
 
 /*

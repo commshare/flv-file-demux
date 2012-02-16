@@ -100,7 +100,8 @@ int main()
     memset (meta, 0, sizeof(*meta));
     memset (pack, 0, sizeof(*pack));
 
-    h->url_open(h, "D:\\Private\\WorkArea\\FLVDemux\\flvdemux_src_version2\\test.flv"\
+    h->url_open(h\
+        , "D:\\Private\\WorkArea\\flv-file-demux\\branches\\flvdemux_mohoframe_test\\test.flv"\
         , 0, NULL);
 
     do
@@ -120,11 +121,13 @@ int main()
             break;
         }
         /// Test Packet Reading
+/*
         while ((ret = flv_demux_read_packet(c, pack)) > 0);
         if (ret < 0)
         {
             break;
         }
+*/
 
         /// Test Seek (Contain Index & Exclusive Index)
         /// Seek To 24s
@@ -191,7 +194,7 @@ int main()
 
 
     printf ("DEMUX ################ test_routine Test Completely\n");
-    //fgetc(stdin);
+    fgetc(stdin);
     return 0;
 }
 #endif
