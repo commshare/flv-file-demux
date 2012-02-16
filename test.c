@@ -121,6 +121,7 @@ int main()
             break;
         }
         /// Test Packet Reading
+        ret = 0;
 /*
         while ((ret = flv_demux_read_packet(c, pack)) > 0);
         if (ret < 0)
