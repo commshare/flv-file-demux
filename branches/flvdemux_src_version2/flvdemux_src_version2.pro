@@ -1,5 +1,5 @@
 DEFINES += _FLV_DEMUX_TEST_
-
+DEFINES += _CRT_SECURE_NO_WARNINGS
 HEADERS += \
     SRC/DEMUX/flv_parse.h \
     SRC/DEMUX/flv_demux.h \
@@ -16,6 +16,5 @@ SOURCES += \
     SRC/DEMUX/amf_parse.c \
     SRC/DATIO/file.c \
     SRC/logger.c \
-    SRC/logger.c
-    SRC/testRoutine.c \
+    SRC/testRoutine.c
 
