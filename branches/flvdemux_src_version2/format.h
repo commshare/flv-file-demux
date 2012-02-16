@@ -328,7 +328,7 @@ enum FileFormatID{
     FILEFORMAT_ID_3GP
 };
 
-typedef enum FLVTagType
+typedef enum
 {
     FLV_ERROR_TAG_TYPE  = 0x00,
     AUDIO_FLV_STREAM_ID = 0x08,

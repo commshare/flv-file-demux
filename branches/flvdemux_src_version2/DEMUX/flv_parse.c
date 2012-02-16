@@ -1,9 +1,8 @@
 #include <string.h>
-#include "../mp_msg.h"
-#include "../avformat.h"
 #include "amf_parse.h"
 #include "flv_parse.h"
-#include "byte_parse.h"
+#include "../format.h"
+#include "flv_parse.h"
 
 BOOL flv_parse_tag_header (FLVTagPacket* pkt, UI8* data, UI32 size)
 {

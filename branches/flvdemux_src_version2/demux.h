@@ -1,7 +1,8 @@
 #ifndef _DEMUX_H_
 #define _DEMUX_H_
-#include "urlprotocol.h"
-#include "avformat.h"
+
+#include "datIO.h"
+#include "format.h"
 
 typedef struct DemuxContext {
     /*

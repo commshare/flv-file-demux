@@ -5,11 +5,19 @@
 #include <malloc.h>
 #include <memory.h>
 #include <stdlib.h>
-#include "byte_parse.h"
-#include "../urlprotocol.h"
-#include "../avformat.h"
 #include "../demux.h"
 
+#ifndef _TYPE_DEFINED_
+#define _TYPE_DEFINED_
+typedef char                I8, BOOL;
+typedef short               I16;
+typedef long                I32;
+typedef long long           I64;
+typedef unsigned char       UI8;
+typedef unsigned short      UI16;
+typedef unsigned long       UI32;
+typedef unsigned long long  UI64;
+#endif
 
 #define FLV_FILE_HEADER_SIZE 13U
 #define FLV_TAGS_HEADER_SIZE 11U

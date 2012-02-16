@@ -7,8 +7,24 @@
 #ifndef AMF_PARSER_H
 #define AMF_PARSER_H
 
+#include <stddef.h>
+#include "../format.h"
 #include "flv_demux.h"
-#include "byte_parse.h"
+
+#define TRUE   0
+#define FALSE -1
+
+#ifndef _TYPE_DEFINED_
+#define _TYPE_DEFINED_
+typedef char                I8, BOOL;
+typedef short               I16;
+typedef long                I32;
+typedef long long           I64;
+typedef unsigned char       UI8;
+typedef unsigned short      UI16;
+typedef unsigned long       UI32;
+typedef unsigned long long  UI64;
+#endif
 
 typedef enum AMFType
 {
@@ -30,6 +46,16 @@ typedef enum AMFType
     XML_DOCUMENT_MARKER = 0x0F, ///< This program does not supported this AMF data type
     TYPED_OBJECT_MARKER = 0x10  ///< This program does not supported this AMF data type
 }AMFType;
+
+
+/// @brief Check if local machine is little endian
+BOOL is_little_endian ();
+/// @brief Get an unsigned integer from buf
+BOOL get_Byte (UI8** buf, UI32 *size, UI8 * data);
+BOOL get_UI16 (UI8** buf, UI32 *size, UI16* data);
+BOOL get_UI24 (UI8** buf, UI32 *size, UI32* data);
+BOOL get_UI32 (UI8** buf, UI32 *size, UI32* data);
+BOOL get_UI64 (UI8** buf, UI32* size, UI64* data);
 
 BOOL amf_parse_elem_name    (UI8** buf, UI32* size, UI8** data, UI16* lens);
 BOOL amf_parse_number       (UI8** buf, UI32* size, UI64* data);

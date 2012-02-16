@@ -1,8 +1,7 @@
 #include <string.h>
 #include "../demux.h"
-#include "../avformat.h"
-#include "../mp_msg.h"
-#include "../commonplaytype.h"
+#include "../format.h"
+#include "../logger.h"
 #include "flv_demux.h"
 #include "flv_parse.h"
 #include "amf_parse.h"
@@ -1057,7 +1056,7 @@ int flv_demux_parse_codec_from_raw_data (unsigned char * data, int size, Metadat
         case LONG_STRING_MARKER :
         {
             UI32 len = 0U;
-            if ((get_UI32(&data, (UI32*)&size, &len) == FALSE) || (size < len))
+            if ((get_UI32(&data, (UI32*)&size, &len) == FALSE) || (size < (int)len))
             {
                 goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }
