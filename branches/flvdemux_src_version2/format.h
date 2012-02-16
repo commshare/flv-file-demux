@@ -305,7 +305,7 @@ enum CodecID {
 
     CODEC_ID_MPEG2TS= 0x20000, /**< _FAKE_ codec to indicate a raw MPEG-2 TS
                                 * stream (only used by libavformat) */
-    CODEC_ID_FFMETADATA=0x21000,   ///< Dummy codec for streams containing only metadata information.
+    CODEC_ID_FFMETADATA=0x21000   ///< Dummy codec for streams containing only metadata information.
 };
 
 enum FileFormatID{
@@ -335,6 +335,14 @@ typedef enum FLVTagType
     VIDEO_FLV_STREAM_ID = 0x09,
     MDATA_FLV_STREAM_ID = 0x12
 }FLVTagType;
+
+typedef enum
+{
+    DACF_NONE = 0x00000000, ///< No Container format used
+    DACF_ADTS = 0x00000001, ///< ADTS Container format for AAC
+    DACF_ADIF = 0x00000002, ///< ADIF Container format for AAC
+    DACF_LATM = 0x00000004  ///< LATM Container format for AAC
+}DFBAudioContainerFormat;
 
 typedef struct Metadata{
     int fileformat;

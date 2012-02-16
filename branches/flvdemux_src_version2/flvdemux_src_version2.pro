@@ -6,7 +6,6 @@ HEADERS += \
     src/byte_parse.h \
     src/amf_parse.h \
     urlprotocol.h \
-    mp_msg.h \
     demux.h \
     commonplaytype.h \
     avformat.h
