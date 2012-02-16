@@ -1,3 +1,5 @@
+DEFINES += _FLV_DEMUX_TEST_
+
 HEADERS += \
     src/flv_parse.h \
     src/flv_demux.h \

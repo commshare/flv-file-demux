@@ -59,20 +59,20 @@ typedef struct FLVDemuxer
 
 
 /// @brief  Open FLV demux
-int       flv_demux_open (DemuxContext* ctx, URLProtocol* h);
+int flv_demux_open  (DemuxContext* ctx, URLProtocol* h);
 /// @brief  Probe FLV file
-int       flv_demux_probe (DemuxContext* ctx);
+int flv_demux_probe (DemuxContext* ctx);
 /// @brief  Close FLV demux
-int       flv_demux_close (DemuxContext* ctx);
+int flv_demux_close (DemuxContext* ctx);
 /// @brief  Parse metadata
-int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta);
+int flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta);
 /// @brief  Read a audio or video packet
-int       flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt);
+int flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt);
 /// @brief  Seek according to assigned timestamp
-long long flv_demux_seek (DemuxContext* ctx, long long ts);
+I64 flv_demux_seek(DemuxContext* ctx, long long ts);
 /// @brief  Meta - fill the field can get, others should be set to zero
 /// @return return 0 on success; -1 on error; >0 input data was not enough, the length all required
-int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta);
+int flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta);
 
 
 #endif/*_FLV_DEMUX_H_*/

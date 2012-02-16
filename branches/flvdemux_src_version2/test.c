@@ -1,3 +1,4 @@
+#ifdef _FLV_DEMUX_TEST_
 #include "mp_msg.h"
 #include "urlprotocol.h"
 #include "src/flv_demux.h"
@@ -23,7 +24,6 @@ extern void mp_msg(int mod, int lev, const char* format, ...)
     printf("%s", tmp);
     fflush(stdout);
 }
-
 int url_open (URLProtocol *h, const char* path, int flags, void* quit)
 {
     URLPrivData* d = NULL;
@@ -38,7 +38,6 @@ int url_open (URLProtocol *h, const char* path, int flags, void* quit)
     h->priv_data_size = sizeof(URLPrivData);
     return 0;
 }
-
 int url_close(URLProtocol* h)
 {
     URLPrivData* d = (URLPrivData*)h->priv_data;
@@ -46,7 +45,6 @@ int url_close(URLProtocol* h)
     d->fp = NULL;
     return 0;
 }
-
 int url_read (URLProtocol *h, unsigned char *buf, int size)
 {
     URLPrivData* d = (URLPrivData*)h->priv_data;
@@ -54,8 +52,7 @@ int url_read (URLProtocol *h, unsigned char *buf, int size)
     d->currpos += ret;
     return ret;
 }
-
-long long url_seek (URLProtocol *h, long long pos, int whence)
+I64 url_seek (URLProtocol *h, long long pos, int whence)
 {
     URLPrivData* d = (URLPrivData*)h->priv_data;
     int ret ;
@@ -68,7 +65,6 @@ long long url_seek (URLProtocol *h, long long pos, int whence)
     ret = fseek(d->fp, (long)pos, whence);
     return (long long)ret;
 }
-
 int url_is_live (URLProtocol* h)
 {
     h = NULL;
@@ -109,15 +105,25 @@ int main()
 
     do
     {
+        /// Test Open
         if (flv_demux_open (c, h))
         {
             break;
         }
+        /// Test Parse Metadata
         if (flv_demux_parse_metadata(c, meta))
         {
             break;
         }
-        while (flv_demux_read_packet(c, pack) > 0);
+//        /// Test Packet Reading
+//        while ((ret = flv_demux_read_packet(c, pack)) > 0);
+//        if (ret < 0)
+//        {
+//            break;
+//        }
+
+        /// Test Seek (Contain Index & Exclusive Index)
+        /// Seek To 24s
         if (flv_demux_seek(c, 24000) < 0)
         {
             break;
@@ -126,10 +132,57 @@ int main()
         {
             break;
         }
-        if (flv_demux_close(c) < 0)
+        /// Seek To 50s
+        if (flv_demux_seek(c, 50000) < 0)
         {
             break;
         }
+        if (flv_demux_read_packet(c, pack) < 0)
+        {
+            break;
+        }
+        /// Seek To 100s
+        if (flv_demux_seek(c, 100000) < 0)
+        {
+            break;
+        }
+        if (flv_demux_read_packet(c, pack) < 0)
+        {
+            break;
+        }
+        /// Seek To 0s
+        if (flv_demux_seek(c, 0) < 0)
+        {
+            break;
+        }
+        if (flv_demux_read_packet(c, pack) < 0)
+        {
+            break;
+        }
+        /// Seek To 10000s
+        if (flv_demux_seek(c, 10000000) < 0)
+        {
+            break;
+        }
+        if (flv_demux_read_packet(c, pack) < 0)
+        {
+            break;
+        }
+
+
+//        /// Test Parse Codec From Raw Data
+//        h->url_seek(h, 0, SEEK_SET);
+//        h->url_read(h, rawdata, datasize);
+//        meta->audiocodec = -1;
+//        meta->videocodec = -1;
+//        if (flv_demux_parse_codec_from_raw_data(rawdata, datasize, meta) < 0)
+//        {
+//            break;
+//        }
+//        if (flv_demux_close(c) < 0)
+//        {
+//            break;
+//        }
     }while (0);
 
 
@@ -137,3 +190,4 @@ int main()
     //fgetc(stdin);
     return 0;
 }
+#endif

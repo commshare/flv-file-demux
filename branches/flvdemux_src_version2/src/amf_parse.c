@@ -66,7 +66,8 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
     UI8* elemname   = NULL; ///< object element name string
     UI8  amf_data_type;      ///< AMF tag type
 
-    mp_msg (0, MSGL_V, "In 0x03 OBJECT\n");fflush(stdout);
+    mp_msg (0, MSGL_INFO\
+        , "DEMUX ################ amf_parse_object : In 0x03 OBJECT\n");fflush(stdout);
 
     while (((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x09))\
         && ((*size) >= 3))
@@ -127,7 +128,7 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
             }
             else if (0 == strcmp((char*)elemname, "duration"))
             {
-                mdata->duation  = (int)val;
+                mdata->duation  = 1000 * (int)val;
             }
             else if (0 == strcmp((char*)elemname, "videodatarate"))
             {
@@ -253,14 +254,16 @@ BOOL amf_parse_object       (UI8** buf, UI32* size, TimestampInd* index, Metadat
 
     if (((*size) >= 3) && (*(*buf + 0) == 0x00 || *(*buf + 1) == 0x00 || *(*buf + 2) == 0x09))
     {
-        mp_msg (0, MSGL_V, "FIND OBJECT END MARKER\n");fflush(stdout);
+        mp_msg (0, MSGL_INFO\
+            , "DEMUX ################ amf_parse_object : FIND OBJECT END MARKER\n");
         *buf  += 3;
         *size -= 3;
         return TRUE;
     }
     else
     {
-        mp_msg (0, MSGL_V, "CANNOT FIND OBJECT END MARKER\n");fflush(stdout);
+        mp_msg (0, MSGL_ERR\
+            , "DEMUX ################ amf_parse_object : CANNOT FIND OBJECT END MARKER\n");
         return FALSE;
     }
 }
@@ -279,12 +282,12 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
         return FALSE;
     }
 
-    mp_msg (0, MSGL_V, "In 0x08 ECMA_ARRAY\n");fflush(stdout);
+    mp_msg (0, MSGL_INFO, "DEMUX ################ amf_parse_ecma_array : In 0x08 ECMA_ARRAY\n");
 
     while ((((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x09))\
         && ((*size) >= 3))\
         || (elemcount_copy < elemcount))
-        
+
     {
         if (amf_parse_elem_name(buf, size, &elemname, &elemlens))
         {
@@ -345,7 +348,7 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
             }
             else if (0 == strcmp((char*)elemname, "duration"))
             {
-                mdata->duation  = (int)val;
+                mdata->duation  = 1000 * (int)val;
             }
             else if (0 == strcmp((char*)elemname, "videodatarate"))
             {
@@ -475,14 +478,16 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
         if (((*size) >= 3)\
             && ((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x00)))
         {
-            mp_msg (0, MSGL_V, "FIND ECMA_ARRAY END MARKER\n");
+            mp_msg (0, MSGL_INFO\
+                , "DEMUX ################ amf_parse_ecma_array : FIND ECMA_ARRAY END MARKER\n");
             *buf  += 3;
             *size -= 3;
             return TRUE;
         }
         else
         {
-            mp_msg (0, MSGL_V, "CANNOT FIND ECMA_ARRAY END MARKER\n");
+            mp_msg (0, MSGL_ERR\
+                , "DEMUX ################ amf_parse_ecma_array : CANNOT FIND END MARKER\n");
             return FALSE;
         }
     }
@@ -492,12 +497,14 @@ BOOL amf_parse_ecma_array   (UI8** buf, UI32* size, TimestampInd* index, Metadat
             && ((*size) >= 3)\
             && ((*(*buf + 0) != 0x00) || (*(*buf + 1) != 0x00) || (*(*buf + 2) != 0x00)))
         {
-            mp_msg (0, MSGL_V, "FIND ECMA_ARRAY END MARKER\n");fflush(stdout);
+            mp_msg (0, MSGL_INFO\
+                , "DEMUX ################ amf_parse_ecma_array : FIND ECMA_ARRAY END MARKER\n");
             *buf  += 3;
             *size -= 3;
             return TRUE;
         }
-        mp_msg (0, MSGL_V, "NO ECMA_ARRAY END MARKER\n");fflush(stdout);
+        mp_msg (0, MSGL_INFO\
+            , "DEMUX ################ amf_parse_ecma_array : NO ECMA_ARRAY END MARKER\n");
         return TRUE;
     }
     return TRUE;

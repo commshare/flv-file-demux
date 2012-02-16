@@ -7,42 +7,34 @@
 #include "flv_parse.h"
 #include "amf_parse.h"
 
+#ifndef _FLV_DEMUX_TEST_
+/// @brief Demux Healper Initialize
+static int           demux_helper_initialise();
+/// @brief Demux Healper Destroy
+static int           demux_helper_deinitialise();
+/// @brief Demux Helper Set Exit Flg
+static void          demux_helper_set_exit_flag();
 /// @brief  Check if file of this type can handle
 static int           can_handle(int fileformat);
-/// @brief  Create demux context
+/// @brief Create Demux Context
 static DemuxContext* create_demux_context();
-/// @brief  Destroy demux context
+/// @brief Destroy Demux Context
 static void          destroy_demux_context(DemuxContext * ctx);
-/// @brief  Get a tag packet and set it into dmx
-static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx);
-/// @brief  Add a pre-read tag packet
-static BOOL          flv_demux_add_a_prepacket (FLVDemuxer* dmx);
-/// @brief  Get a pre-read packet
-static BOOL          flv_demux_check_prepacket_list (FLVDemuxer* dmx, UI64 pos, AVPacket* pkt);
 
-
-DemuxContextHelper   flv_demux_helper =
-{
+DemuxContextHelper   flv_demux_helper = {
     "flv",
+    demux_helper_initialise,
+    demux_helper_deinitialise,
+    demux_helper_set_exit_flag,
     can_handle,
     create_demux_context,
     destroy_demux_context,
     0,
     0
 };
-static int           can_handle(int fileformat)
-{
-    if (fileformat == FILEFORMAT_ID_FLV)
-    {
-        mp_msg(0, MSGL_V, "can_handle : OK\n");
-        return 0;
-    }
-    mp_msg(0, MSGL_V, "can_handle :: Cannot handle\n");
-    return -1;
-}
 static DemuxContext* create_demux_context()
 {
-    DemuxContext * ctx = (DemuxContext*)calloc(1, sizeof(DemuxContext));
+    DemuxContext * ctx = calloc(1, sizeof(DemuxContext));
     ctx->demux_open = flv_demux_open;
     ctx->demux_probe = flv_demux_probe;
     ctx->demux_close = flv_demux_close;
@@ -50,6 +42,7 @@ static DemuxContext* create_demux_context()
     ctx->demux_read_packet = flv_demux_read_packet;
     ctx->demux_seek = flv_demux_seek;
 
+    pthread_mutex_lock(&flv_demux_helper.instance_list_mutex);
     //insert the instance to the global instance list
     if(flv_demux_helper.priv_data == 0)
     {
@@ -57,15 +50,18 @@ static DemuxContext* create_demux_context()
     }
     else
     {
-        ctx->next = (DemuxContext*)flv_demux_helper.priv_data;
+        ctx->next = flv_demux_helper.priv_data;
         flv_demux_helper.priv_data = ctx;
     }
+    pthread_mutex_unlock(&flv_demux_helper.instance_list_mutex);
 
     return ctx;
 }
-static void          destroy_demux_context(DemuxContext * ctx)
+static void destroy_demux_context(DemuxContext * ctx)
 {
-    DemuxContext * cur = (DemuxContext*)flv_demux_helper.priv_data;
+    pthread_mutex_lock(&flv_demux_helper.instance_list_mutex);
+    //remove the instance from the global instance list
+    DemuxContext * cur = flv_demux_helper.priv_data;
     DemuxContext * prev = cur;
     while(cur && cur != ctx)
     {
@@ -85,10 +81,43 @@ static void          destroy_demux_context(DemuxContext * ctx)
         }
     }
 
-    /// @note destroy DemuxContext only, it's private data should be cleared in flv_demux_close
+    //destroy DemuxContext only, it's private data should be cleared in flv_demux_close
     free(ctx);
+    pthread_mutex_unlock(&flv_demux_helper.instance_list_mutex);
 }
-static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx)
+static int  can_handle(int fileformat)
+{
+    if (fileformat == FILEFORMAT_ID_FLV)
+    {
+        mp_msg(0, MSGL_V, "flv_demux_can_handle : OK\n");
+        return 0;
+    }
+    mp_msg(0, MSGL_V, "flv_demux_can_handle : This format cannot handle\n");
+    return -1;
+}
+static int  demux_helper_initialise()
+{
+    return pthread_mutex_init(&flv_demux_helper.instance_list_mutex, NULL);
+}
+static int  demux_helper_deinitialise()
+{
+    return pthread_mutex_destroy(&flv_demux_helper.instance_list_mutex);
+}
+static void demux_helper_set_exit_flag()
+{
+    pthread_mutex_lock(&flv_demux_helper.instance_list_mutex);
+    DemuxContext * ctx = flv_demux_helper.priv_data;
+    while(ctx)
+    {
+        ctx->exit_flag = 1;
+        ctx = ctx->next;
+    }
+    pthread_mutex_unlock(&flv_demux_helper.instance_list_mutex);
+}
+#endif
+
+/// @brief  Get a tag packet and set it into dmx
+static BOOL flv_demux_get_tag_packet (FLVDemuxer* dmx)
 {
     FLVTagPacket* pkt = NULL;
     URLProtocol*  pro = NULL;
@@ -160,10 +189,11 @@ static BOOL          flv_demux_get_tag_packet (FLVDemuxer* dmx)
     dmx->m_CurrentPosition += (pkt->m_TagDataSize + FLV_TAGS_HEADER_SIZE + FLV_TAGS_TAILER_SIZE);
     return TRUE;
 }
-static BOOL          flv_demux_add_a_prepacket (FLVDemuxer* dmx)
+/// @brief  Add a pre-read tag packet
+static BOOL flv_demux_add_a_prepacket (FLVDemuxer* dmx)
 {
     PrereadTags* temp = NULL;
-    
+
     if (dmx == NULL)
     {
         return FALSE;
@@ -190,7 +220,8 @@ static BOOL          flv_demux_add_a_prepacket (FLVDemuxer* dmx)
     memset (&dmx->m_CurrentPacket, 0, sizeof(FLVTagPacket));
     return TRUE;
 }
-static BOOL          flv_demux_check_prepacket_list (FLVDemuxer* dmx, UI64 pos, AVPacket* pkt)
+/// @brief  Get a pre-read packet
+static BOOL flv_demux_check_prepacket_list (FLVDemuxer* dmx, UI64 pos, AVPacket* pkt)
 {
     PrereadTags* temp = NULL;
 
@@ -252,8 +283,7 @@ static BOOL          flv_demux_check_prepacket_list (FLVDemuxer* dmx, UI64 pos, 
     }
     return FALSE;
 }
-
-int       flv_demux_open (DemuxContext* ctx, URLProtocol* h)
+int flv_demux_open  (DemuxContext* ctx, URLProtocol* h)
 {
     FLVDemuxer* dmx;
     I8  errstr[64];
@@ -295,7 +325,7 @@ int       flv_demux_open (DemuxContext* ctx, URLProtocol* h)
     mp_msg(0, errtyp, "DEMUX ################ flv_demux_open %s\n", errstr);
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
-int       flv_demux_probe (DemuxContext* ctx)
+int flv_demux_probe (DemuxContext* ctx)
 {
     FLVDemuxer*  dmx = NULL;
     URLProtocol* pro = NULL;
@@ -332,7 +362,7 @@ int       flv_demux_probe (DemuxContext* ctx)
     mp_msg(0, errtyp, "DEMUX ################ flv_demux_probe %s\n", errstr);
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
-int       flv_demux_close (DemuxContext* ctx)
+int flv_demux_close (DemuxContext* ctx)
 {
     FLVDemuxer*  dmx  = NULL;
     PrereadTags* tags = NULL;
@@ -396,7 +426,7 @@ FLV_DEMUX_CLOSE_ERROR:
     mp_msg(0, errtyp, "DEMUX ################ flv_demux_close %s\n", errstr);
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
-int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
+int flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
 {
     FLVDemuxer*   dmx = NULL;
     URLProtocol*  pro = NULL;
@@ -505,7 +535,7 @@ int       flv_demux_parse_metadata (DemuxContext* ctx, Metadata* meta)
     {
         UI8  flag = 0U;
 
-        do 
+        do
         {
             BOOL readflag = flv_demux_get_tag_packet (dmx);
             if (FALSE == readflag)
@@ -586,13 +616,13 @@ FLV_DEMUX_PARSE_METADATA_ERROR:
             , meta->abitrate);
         mp_msg(0, errtyp, "DEMUX ################ flv_demux_parse_metadata DURATION = %d\n"\
             , meta->duation);
-        dmx->m_FileDuration = meta->duation;
+        dmx->m_FileDuration = meta->duation / 1000;
         dmx->m_AudioBitRate = meta->abitrate;
         dmx->m_VideoBitRate = meta->vbitrate;
     }
     return (errtyp == MSGL_ERR ? -1 : 0);
 }
-int       flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt)
+int flv_demux_read_packet (DemuxContext* ctx, AVPacket* pkt)
 {
     FLVDemuxer* dmx;
     I8   errstr[64];
@@ -658,14 +688,14 @@ FLV_DEMUX_READ_PACKET_ERROR:    ///< Operation is Failed
     return -1;
 FLV_DEMUX_READ_PACKET_OK:       ///< All Process is OK
     mp_msg(0, errtyp\
-        , "DEMUX ################ flv_demux_read_packet -%s- PTS = %-8lld SIZE = %-8d POS = %lld\n"\
+        , "DEMUX ################ flv_demux_read_packet --%s-- PTS = %-8lld SIZE = %-8d POS = %lld\n"\
         , (pkt->stream_index == 0x08 ? "AUDIO" : "VIDEO"), pkt->pts, pkt->size, pos);
     return pkt->size;
 FLV_DEMUX_READ_PACKET_FILE_END: ///< File End
     mp_msg(0, errtyp, "DEMUX ################ flv_demux_read_packet %s\n", errstr);
     return 0;
 }
-long long flv_demux_seek (DemuxContext* ctx, long long ts)
+I64 flv_demux_seek(DemuxContext* ctx, long long ts)
 {
     FLVDemuxer*   dmx = NULL;
     URLProtocol*  pro = NULL;
@@ -719,15 +749,17 @@ long long flv_demux_seek (DemuxContext* ctx, long long ts)
         if (i == dmx->m_TimestampIndex.m_Count)
         {
             dmx->m_CurrentPosition = dmx->m_TimestampIndex.m_Index[i - 1].m_FilePos;
+            errtyp = MSGL_V;
+            strcpy(errstr, "Out Of File & Seek To Last Key Frame");
+            goto FLV_DEMUX_SEEK_OK;
         }
         else
         {
             dmx->m_CurrentPosition = dmx->m_TimestampIndex.m_Index[i].m_FilePos;
+            errtyp = MSGL_INFO;
+            strcpy(errstr, "Seek Successful");
+            goto FLV_DEMUX_SEEK_OK;
         }
-
-        errtyp = MSGL_V;
-        strcpy(errstr, "Seek Successful");
-        goto FLV_DEMUX_SEEK_OK;
     }
     else
     {
@@ -866,7 +898,7 @@ FLV_DEMUX_SEEK_OK:
         , errstr, dmx->m_CurrentPosition);
     return dmx->m_CurrentPosition;
 }
-int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Metadata* meta)
+int flv_demux_parse_codec_from_raw_data (unsigned char * data, int size, Metadata* meta)
 {
     UI8  errtyp = MSGL_V;
     I8   errstr[64];
@@ -913,11 +945,11 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
         goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_ERROR;
     }
     data += FLV_TAGS_HEADER_SIZE;
-    size -= FVL_TAGS_HEADER_SIZE;
+    size -= FLV_TAGS_HEADER_SIZE;
 
     /// Parse Raw Data
     if ((data[0] != 0x02) || (data[1] != 0x00) || (data[2] != 0x0A)\
-        || (memcmp(&data[3], "onMetaData") != 0) || (data[13] != 0x03 && data[13] != 0x08))
+        || (memcmp(&data[3], "onMetaData", 0x0A) != 0) || (data[13] != 0x03 && data[13] != 0x08))
     {
         errtyp = MSGL_ERR;
         strcpy(errstr, "Data Error");
@@ -925,11 +957,11 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
     }
     if (data[13] == 0x03)
     {
-        data += 1;
+        data += 14;
     }
     else
     {
-        data += 5;
+        data += 18;
     }
 
     meta->audiocodec = -1;
@@ -938,11 +970,11 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
     strcpy(errstr, "Data Lack");
     while (meta->audiocodec == -1 || meta->videocodec == -1)
     {
-        if (FALSE == amf_parse_elem_name (&data, &size, &elemname, &elemlens))
+        if (FALSE == amf_parse_elem_name (&data, (UI32*)&size, (UI8**)&elemname, &elemlens))
         {
             goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
         }
-        if (FALSE == get_Byte(&data, &size, &amf_data_type))
+        if (FALSE == get_Byte(&data, (UI32*)&size, &amf_data_type))
         {
             goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
         }
@@ -951,7 +983,7 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
         case NUMBER_MARKER      :
         {
             UI64 val = 0ULL;
-            if (amf_parse_number(&data, &size, val) == FALSE)
+            if (amf_parse_number(&data, (UI32*)&size, &val) == FALSE)
             {
                 goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }
@@ -961,13 +993,13 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
                 {
                 case 2: ///< mp3
                 case 14:///< mp3
-                    mdata->audiocodec = CODEC_ID_MP3;
+                    meta->audiocodec = CODEC_ID_MP3;
                     break;
                 case 10:///< aac
-                    mdata->audiocodec = CODEC_ID_AAC;
+                    meta->audiocodec = CODEC_ID_AAC;
                     break;
                 default:
-                    mdata->audiocodec = CODEC_ID_NONE;
+                    meta->audiocodec = CODEC_ID_NONE;
                     break;
                 }
             }
@@ -976,13 +1008,13 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
                 switch(val)
                 {
                 case 2:///< H.263
-                    mdata->videocodec = CODEC_ID_H263;
+                    meta->videocodec = CODEC_ID_H263;
                     break;
                 case 7:///< AVC
-                    mdata->videocodec = CODEC_ID_H264;
+                    meta->videocodec = CODEC_ID_H264;
                     break;
                 default:
-                    mdata->videocodec = CODEC_ID_NONE;
+                    meta->videocodec = CODEC_ID_NONE;
                     break;
                 }
             }
@@ -990,7 +1022,7 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
         }
         case BOOLEAN_MARKER     :
         {
-            if (get_Byte(&data, &size, NULL) == FALSE)
+            if (get_Byte(&data, (UI32*)&size, NULL) == FALSE)
             {
                 goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }
@@ -999,7 +1031,7 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
         case STRING_MARKER      :
         {
             UI16 len = 0U;
-            if ((get_UI16(&data, &size, &len) == FALSE) || (size < len))
+            if ((get_UI16(&data, (UI32*)&size, &len) == FALSE) || (size < len))
             {
                 goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }
@@ -1025,7 +1057,7 @@ int       flv_demux_parse_codec_from_raw_data(unsigned char * data, int size, Me
         case LONG_STRING_MARKER :
         {
             UI32 len = 0U;
-            if ((get_UI32(&data, &size, &len) == FALSE) || (size < len))
+            if ((get_UI32(&data, (UI32*)&size, &len) == FALSE) || (size < len))
             {
                 goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }

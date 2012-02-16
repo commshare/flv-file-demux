@@ -60,7 +60,7 @@ BOOL flv_parse_tag_script (const FLVTagPacket* pkt, TimestampInd* index, Metadat
     {
         return FALSE;
     }
-    
+
     flag = data[13];
     mdata->streams = 2;
     mdata->audiostreamindex = 0x08;
