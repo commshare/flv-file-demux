@@ -777,10 +777,15 @@ I64 flv_demux_seek(DemuxContext* ctx, long long ts)
             UI8 flag = 0;
             int ret  = 0;
             UI8 temp[FLV_TAGS_HEADER_SIZE];
+
+            int  validtag = 0;          ///< Valid Tag Count(MUST >= 5)
+            BOOL getvideo = FALSE;      ///< If have got video tag
+            BOOL avcvideo = FALSE;      ///< If This file is contain AVC
+            I64  keyframe = -1LL;       ///< Key frame posiion
+
             FLVTagPacket* pkt = &dmx->m_CurrentPacket;
 
             /// Seek To Test Position
-            currpos = testpos;
             if (pro->url_seek(pro, testpos, SEEK_SET) < 0)
             {
                 errtyp = MSGL_ERR;
@@ -805,22 +810,29 @@ I64 flv_demux_seek(DemuxContext* ctx, long long ts)
                     goto FLV_DEMUX_SEEK_ERROR;
                 }
                 ++testpos;
-                ++currpos;
             }
+            currpos = testpos;
+
+            mp_msg (0, MSGL_V\
+                , "DEMUX ################ flv_demux_seek : Test Position %lld\n", testpos);
 
             /// Test following data
             while (1)
             {
-                int  validtag = 0;          ///< Valid Tag Count(MUST >= 5)
-                BOOL getvideo = FALSE;      ///< If have got video tag
-                BOOL avcvideo = FALSE;      ///< If This file is contain AVC
-                I64  keyframe = -1LL;       ///< Key frame posiion
-
                 /// Circle Exiting And Seek Return Condition
-                if ((getvideo== TRUE) && (validtag >= 5)\
+                if ((getvideo == TRUE) && (validtag >= 5)\
                     && ((avcvideo == TRUE && keyframe != -1) || (avcvideo == FALSE)))
                 {
-                    dmx->m_CurrentPosition = testpos - 1;
+                    if (keyframe == -1)
+                    {
+                        dmx->m_CurrentPosition = currpos - 1;
+                    }
+                    else
+                    {
+                        dmx->m_CurrentPosition = keyframe;
+                    }
+                    errtyp = MSGL_V;
+                    strcpy(errstr, "Seek Successfully");
                     goto FLV_DEMUX_SEEK_OK;
                 }
 
@@ -852,7 +864,7 @@ I64 flv_demux_seek(DemuxContext* ctx, long long ts)
                 }
 
                 /// Now assume found a Tag and then Go to Find Key Frame
-                if (temp[0] == AUDIO_FLV_STREAM_ID)
+                if (pkt->m_TagType == VIDEO_FLV_STREAM_ID)
                 {
                     getvideo = TRUE;
                     ret = pro->url_read(pro, &flag, 1);
@@ -884,6 +896,17 @@ I64 flv_demux_seek(DemuxContext* ctx, long long ts)
                     strcpy(errstr, "Calling url_seek Failed");
                     goto FLV_DEMUX_SEEK_ERROR;
                 }
+                if (pro->url_read(pro, &flag, 1) < 0)
+                {
+                    errtyp = MSGL_ERR;
+                    strcpy(errstr, "Calling url_read Failed");
+                    goto FLV_DEMUX_SEEK_ERROR;
+                }
+                if (flag != 0x08 && flag != 0x09)
+                {
+                    break;
+                }
+                ++currpos;
                 ++validtag;
             }
             ++testpos;
@@ -1063,7 +1086,7 @@ int flv_demux_parse_codec_from_raw_data (unsigned char * data, int size, Metadat
         case LONG_STRING_MARKER :
         {
             UI32 len = 0U;
-            if ((get_UI32(&data, (UI32*)&size, &len) == FALSE) || (size < len))
+            if ((get_UI32(&data, (UI32*)&size, &len) == FALSE) || (size < (int)len))
             {
                 goto FLV_DEMUX_PARSE_CODEC_FROM_RAW_DATA_LACK;
             }
