@@ -309,7 +309,7 @@ int flv_demux_open  (DemuxContext* ctx, URLProtocol* h)
         ctx->priv_data_size     = sizeof(FLVDemuxer);
         ctx->priv_data          = (void *)dmx;
 
-        dmx->m_FileSize         = (h ? h->url_seek(h, 0, SEEK_SIZE) : 0);
+        dmx->m_FileSize         = (h->islive() ? 0 : h->url_seek(h, 0, SEEK_SIZE));
         dmx->m_AudioBitRate     = 0UL;
         dmx->m_VideoBitRate     = 0UL;
         dmx->m_FileDuration     = 0ULL;
